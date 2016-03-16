@@ -5,9 +5,19 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-//double **doubleMatrixMult(double **m1, double **m2, int p, int q, int r);
+/* doubleVettToVerticalMatrix transforms an array of size dim into a 
+*  vertical matrix (dim x 1)
+*/
 double **doubleVettToVerticalMatrix(double *vett, int dim);
+
+/* doubleMatrixTranspone does the transposition of a matrix.
+*  mat (m * n) --> result (n * m)
+*/
 double **doubleMatrixTranspone(double **mat, int m, int n);
+
+/* doubleMatrixPrint receives a matrix as a parameter of size (m x n)
+*  and prints the values
+*/
 void doubleMatrixPrint(double **mat, int m, int n);
 
 
@@ -17,6 +27,7 @@ double result;
 int k;
 
 int n_thread_left;
+// mutex for accessing variable n_thread_left
 pthread_mutex_t n_thread_mutex;
 
 void *thread_function(void *param);
@@ -43,6 +54,7 @@ int main(int argc, char **argv) {
 	v2 = malloc(k * sizeof(double));
 	mat = malloc(k * sizeof(double *));
 
+	// assign values to arrays and to the matrix
 	for (i = 0; i < k; i++) {
 		v1[i] = ((double)rand()) / INT_MAX - 0.5;
 		v2[i] = ((double)rand()) / INT_MAX - 0.5;
@@ -53,17 +65,20 @@ int main(int argc, char **argv) {
 	}
 
 	v = malloc(k * sizeof(double));
-/*
+	
+	// transform v1 into a matrix of size (k x 1)
 	m1 = doubleVettToVerticalMatrix(v1, k);
+	// transpone m1
 	m1t = doubleMatrixTranspone(m1, k, 1);
 	printf("Matrix m1t:\n");
 	doubleMatrixPrint(m1t, 1, k);
 	printf("Matrix mat:\n");
 	doubleMatrixPrint(mat, k, k);
+	// transform v2 into a matrix of size (k x 1)
 	m2 = doubleVettToVerticalMatrix(v2, k);
 	printf("Matrix m2:\n");
 	doubleMatrixPrint(m2, k, 1);
-	*/
+	
 /*	
 	intermediate = doubleMatrixMult(mat, m2, k, k, 1);
 	//doubleMatrixPrint(intermediate, k, 1);
@@ -95,16 +110,22 @@ int main(int argc, char **argv) {
 void *thread_function(void *param) {
 	int i = *(int *)param;
 	int j;
+	// calculate the i-th element
 	for (j = 0; j < k; j++) {
 		v[i] += mat[i][j] * v2[j];
 	}
 	
-	// TODO last thread handling
+	// this critical section is executed in mutual exclusion
 	pthread_mutex_lock(&n_thread_mutex);
 	int tmp = --n_thread_left;
 	pthread_mutex_unlock(&n_thread_mutex);
-	printf("v[%d] = %f\tn_thread_left = %d\n", i, v[i], tmp);
+	// end of critical section
+	
+	// print for debug purpose
+	//printf("v[%d] = %f\tn_thread_left = %d\n", i, v[i], tmp);
 	fflush(stdout);
+	
+	
 	if (tmp == 0) {
 		// this is the last thread
 		result = 0;

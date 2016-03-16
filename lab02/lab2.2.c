@@ -48,7 +48,7 @@ void sort(mergeParamType *p) {
     int i, j, temp;
     // i goes from 0 to (r-l)
     for (i = l; i < r; i++) {
-      // j between l and r - i
+      // j between l and r - i + l
       for (j = l; j < r - i + l; j++) {
         if (vet[j] > vet[j+1]) {
           temp = vet[j];
@@ -78,7 +78,7 @@ void *mergeSort(void *param){
     
       middle = p->left + (p->right - p->left)/2;  // Same as (left + right)/2, but avoids overflow for large l and r
       //printf("middle = %d\n", middle);
-     	// prepare parameters
+     	// prepare parameters for left and right recursion
        lp.vet = p->vet;
        lp.left = p->left;
        lp.right = middle;
@@ -112,7 +112,7 @@ int main(int argc, char ** argv) {
   int *vet;
   
   mergeParamType param;
-  pthread_t sortThread;
+  //pthread_t sortThread;
   
   if (argc < 3) {
     printf ("Syntax: %s dimension threshold", argv[0]);
@@ -136,9 +136,10 @@ int main(int argc, char ** argv) {
   param.right = n-1;
   param.threshold = threshold;
   
-  pthread_create(&sortThread, NULL, mergeSort, (void *) &param);  
+  //pthread_create(&sortThread, NULL, mergeSort, (void *) &param);  
   //mergeSort(vet,0, n-1);
-  pthread_join(sortThread, NULL);
+  //pthread_join(sortThread, NULL);
+  mergeSort(&param);
   printf("\n");
   for(i = 0;i < n;i++) 
 	printf("%d\n",vet[i]);

@@ -53,7 +53,7 @@ void *mergeSort(void *param){
   if (p->left < p->right){
     middle = p->left + (p->right - p->left)/2;  // Same as (left + right)/2, but avoids overflow for large l and r
     //printf("middle = %d\n", middle);
- 	// prepare parameters
+ 	// prepare parameters for left and right recursion
    lp.vet = p->vet;
    lp.left = p->left;
    lp.right = middle;
@@ -84,7 +84,7 @@ int main(int argc, char ** argv) {
   int *vet;
   
   mergeParamType param;
-  pthread_t sortThread;
+  //pthread_t sortThread;
   
   if (argc != 2) {
     printf ("Syntax: %s dimension\n", argv[0]);
@@ -99,7 +99,7 @@ int main(int argc, char ** argv) {
   
   for(i = 0;i < n;i++) {
     vet[i] = rand() % 100;
-	printf("%d\n",vet[i]);
+	 printf("%d\n",vet[i]);
   }
 	
   param.vet = vet;
