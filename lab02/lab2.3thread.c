@@ -79,13 +79,6 @@ int main(int argc, char **argv) {
 	printf("Matrix m2:\n");
 	doubleMatrixPrint(m2, k, 1);
 	
-/*	
-	intermediate = doubleMatrixMult(mat, m2, k, k, 1);
-	//doubleMatrixPrint(intermediate, k, 1);
-	resultMat = doubleMatrixMult(m1t, intermediate, 1, k, 1);
-	result = resultMat[0][0];
-	printf("Result is: %f\n", result);
-*/
 	n_thread_left = k;
 	pthread_mutex_init(&n_thread_mutex, NULL);
 	pthread_t *threads = malloc(k * sizeof(pthread_t));
@@ -138,28 +131,6 @@ void *thread_function(void *param) {
 	return NULL;
 }
 
-/*
-double **doubleMatrixMult(double **m1, double **m2, int p, int q, int r) {
-	// m1 is p x q, m2 is q x r
-	double ** result = malloc(p * sizeof(double *));
-	int i, j, k;
-	pthread_t *threads = malloc(p * sizeof(thread));
-	// for each line of m1
-	for (i = 0; i < p; i++) {
-		result[i] = malloc(r * sizeof(double));
-		// for each column of m2
-		for (j = 0; j < r; j++) {
-			double curr = 0;
-			// calculate line * column
-			for (k = 0; k < q; k++) {
-				curr += m1[i][k] * m2[k][j];
-			}
-			result[i][j] = curr;
-		}
-	}
-	return result;
-}
-*/
 double **doubleVettToVerticalMatrix(double *vett, int dim) {
 	int i;
 	double **mat = malloc(dim * sizeof(double *));
