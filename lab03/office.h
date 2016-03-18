@@ -7,32 +7,32 @@
 #define NUM_OFFICES 4
 
 typedef struct Info{
-  int id;
-  int office_no;
-  int urgent;
+	int id;
+	int office_no;
+	int urgent;
 }Info;
 
 typedef struct Num_students{
-  pthread_mutex_t lock;
-  int num;
+	pthread_mutex_t lock;
+	int num;
 }Num_students;
 
 typedef struct Buffer{
-Info *buffer;
-pthread_mutex_t lock;
-pthread_cond_t *notfull;
-pthread_cond_t *notempty;
-int in;
-int out;
-int count;
-int dim;
+	Info *buffer;
+	pthread_mutex_t lock;
+	pthread_cond_t *notfull;
+	pthread_cond_t *notempty;
+	int in;
+	int out;
+	int count;
+	int dim;
 }Buffer;
 
 typedef struct Cond{
-  pthread_mutex_t lock;  
-  pthread_cond_t  *cond;	// to be allocated
-  int             *urgent;	// NUM_OFFICES to be allocated
-  int             normal;
+	pthread_mutex_t lock;  
+	pthread_cond_t  *cond;	// to be allocated
+	int             *urgent;	// NUM_OFFICES to be allocated
+	int             normal;
 } Cond;
 
 Buffer *B_init (int dim);
