@@ -90,13 +90,15 @@ int main(int argc, char **argv) {
 			printf("Error creating thread");
 			exit(-1);
 		}
+		pthread_detach(threads[i]);
 	}
-	
+	/*
 	for (i = 0; i < k; i++) {
 		pthread_join(threads[i], NULL);
 	}
 	pthread_mutex_destroy(&n_thread_mutex);
-	
+	*/
+	pthread_exit(0);
 	return 0;
 }
 
