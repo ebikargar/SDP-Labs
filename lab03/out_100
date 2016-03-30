@@ -1,0 +1,666 @@
+0
+student 12 arrived at the queue
+student 27 arrived at the queue
+student 38 arrived at the queue
+student 12 has been selected from office 1
+student 27 has been selected from office 2
+student 38 has been selected from office 3
+student 54 arrived at the queue
+student 57 arrived at the queue
+student 65 arrived at the queue
+student 54 has been selected from office 0
+student 86 arrived at the queue
+student 89 arrived at the queue
+student 95 arrived at the queue
+student 77 arrived at the queue
+1
+student 9 arrived at the queue
+student 29 arrived at the queue
+student 24 arrived at the queue
+student 16 arrived at the queue
+student 31 arrived at the queue
+student 33 arrived at the queue
+student 36 arrived at the queue
+student 45 arrived at the queue
+student 50 arrived at the queue
+student 51 arrived at the queue
+student 79 arrived at the queue
+student 80 arrived at the queue
+student 94 arrived at the queue
+student 75 arrived at the queue
+2
+student 2 arrived at the queue
+student 3 arrived at the queue
+student 42 arrived at the queue
+student 59 arrived at the queue
+student 87 arrived at the queue
+student 90 arrived at the queue
+student 93 arrived at the queue
+3
+student 8 arrived at the queue
+student 17 arrived at the queue
+student 68 arrived at the queue
+student 19 arrived at the queue
+student 37 arrived at the queue
+student 44 arrived at the queue
+student 27 going from normal office 2 to the special office
+student 57 has been selected from office 2
+student 60 arrived at the queue
+student 15 arrived at the queue
+student 91 arrived at the queue
+student 27 received by the special office
+4
+student 0 arrived at the queue
+student 13 arrived at the queue
+student 12 going from normal office 1 to the special office
+student 28 arrived at the queue
+student 39 arrived at the queue
+student 40 arrived at the queue
+student 65 has been selected from office 1
+student 20 arrived at the queue
+student 88 arrived at the queue
+5
+student 6 arrived at the queue
+student 7 arrived at the queue
+student 86 has been selected from office 3
+student 32 arrived at the queue
+student 34 arrived at the queue
+student 35 arrived at the queue
+student 52 arrived at the queue
+student 38 terminated after service at office 3
+student 11 arrived at the queue
+student 61 arrived at the queue
+student 62 arrived at the queue
+student 66 arrived at the queue
+student 69 arrived at the queue
+student 82 arrived at the queue
+student 96 arrived at the queue
+student 98 arrived at the queue
+student 99 arrived at the queue
+6
+student 10 arrived at the queue
+student 23 arrived at the queue
+student 21 arrived at the queue
+student 25 arrived at the queue
+student 30 arrived at the queue
+student 47 arrived at the queue
+student 43 arrived at the queue
+student 56 arrived at the queue
+student 57 going from normal office 2 to the special office
+student 89 has been selected from office 2
+student 70 arrived at the queue
+student 72 arrived at the queue
+student 74 arrived at the queue
+student 54 terminated after service at office 0
+student 95 has been selected from office 0
+student 92 arrived at the queue
+student 27 served by the special office, going back to office 2
+student 12 received by the special office
+student 81 arrived at the queue
+7
+student 1 arrived at the queue
+student 22 arrived at the queue
+student 48 arrived at the queue
+student 85 arrived at the queue
+student 78 arrived at the queue
+8
+student 4 arrived at the queue
+student 5 arrived at the queue
+student 18 arrived at the queue
+student 26 arrived at the queue
+student 41 arrived at the queue
+student 53 arrived at the queue
+student 58 arrived at the queue
+student 55 arrived at the queue
+student 86 terminated after service at office 3
+student 77 has been selected from office 3
+student 64 arrived at the queue
+student 63 arrived at the queue
+student 73 arrived at the queue
+student 84 arrived at the queue
+student 97 arrived at the queue
+student 76 arrived at the queue
+9
+student 14 arrived at the queue
+student 46 arrived at the queue
+student 49 arrived at the queue
+student 65 terminated after service at office 1
+student 9 has been selected from office 1
+student 67 arrived at the queue
+student 71 arrived at the queue
+student 83 arrived at the queue
+10
+student 89 terminated after service at office 2
+student 29 has been selected from office 0
+student 27 received (urgent) from office 2
+student 95 terminated after service at office 0
+11
+student 24 has been selected from office 2
+student 27 terminated after service at office 2
+12
+student 16 has been selected from office 1
+student 9 going from normal office 1 to the special office
+student 12 served by the special office, going back to office 1
+student 57 received by the special office
+13
+student 31 has been selected from office 3
+student 77 going from normal office 3 to the special office
+14
+15
+16
+student 24 going from normal office 2 to the special office
+student 33 has been selected from office 2
+student 29 terminated after service at office 0
+student 36 has been selected from office 0
+student 57 served by the special office, going back to office 2
+student 9 received by the special office
+17
+student 16 going from normal office 1 to the special office
+student 12 received (urgent) from office 1
+18
+student 31 terminated after service at office 3
+student 45 has been selected from office 3
+student 50 has been selected from office 1
+student 12 terminated after service at office 1
+19
+20
+student 77 received by the special office
+student 9 served by the special office, going back to office 1
+21
+22
+student 33 going from normal office 2 to the special office
+student 57 received (urgent) from office 2
+student 36 terminated after service at office 0
+student 51 has been selected from office 0
+23
+student 79 has been selected from office 3
+student 45 terminated after service at office 3
+student 57 terminated after service at office 2
+student 80 has been selected from office 2
+student 77 served by the special office, going back to office 3
+student 24 received by the special office
+24
+student 50 terminated after service at office 1
+student 9 received (urgent) from office 1
+25
+student 9 terminated after service at office 1
+student 94 has been selected from office 1
+student 75 has been selected from office 0
+student 51 terminated after service at office 0
+26
+student 80 terminated after service at office 2
+student 2 has been selected from office 2
+student 24 served by the special office, going back to office 2
+student 16 received by the special office
+27
+28
+student 79 going from normal office 3 to the special office
+student 77 received (urgent) from office 3
+29
+student 77 terminated after service at office 3
+student 42 has been selected from office 0
+student 75 going from normal office 0 to the special office
+student 3 has been selected from office 3
+30
+student 94 going from normal office 1 to the special office
+student 59 has been selected from office 1
+31
+32
+student 24 received (urgent) from office 2
+student 2 terminated after service at office 2
+student 16 served by the special office, going back to office 1
+student 33 received by the special office
+33
+student 87 has been selected from office 3
+student 3 terminated after service at office 3
+student 24 terminated after service at office 2
+student 90 has been selected from office 2
+34
+student 16 received (urgent) from office 1
+student 59 terminated after service at office 1
+35
+student 16 terminated after service at office 1
+student 93 has been selected from office 1
+student 42 terminated after service at office 0
+student 8 has been selected from office 0
+36
+student 17 has been selected from office 2
+student 90 terminated after service at office 2
+student 79 received by the special office
+student 33 served by the special office, going back to office 2
+37
+student 68 has been selected from office 3
+student 87 terminated after service at office 3
+38
+student 19 has been selected from office 1
+student 93 going from normal office 1 to the special office
+student 37 has been selected from office 0
+student 8 going from normal office 0 to the special office
+39
+student 33 received (urgent) from office 2
+student 79 served by the special office, going back to office 3
+student 75 received by the special office
+student 17 terminated after service at office 2
+40
+student 68 going from normal office 3 to the special office
+student 79 received (urgent) from office 3
+student 33 terminated after service at office 2
+student 44 has been selected from office 2
+41
+student 60 has been selected from office 3
+student 79 terminated after service at office 3
+42
+43
+44
+student 19 terminated after service at office 1
+student 15 has been selected from office 1
+student 37 going from normal office 0 to the special office
+student 91 has been selected from office 0
+45
+student 0 has been selected from office 2
+student 75 served by the special office, going back to office 0
+student 94 received by the special office
+student 44 terminated after service at office 2
+46
+student 60 terminated after service at office 3
+student 13 has been selected from office 3
+47
+48
+student 28 has been selected from office 1
+student 15 going from normal office 1 to the special office
+49
+student 39 has been selected from office 3
+student 13 going from normal office 3 to the special office
+student 93 received by the special office
+student 94 served by the special office, going back to office 1
+50
+student 75 received (urgent) from office 0
+student 91 terminated after service at office 0
+51
+student 75 terminated after service at office 0
+student 40 has been selected from office 0
+student 0 terminated after service at office 2
+student 20 has been selected from office 2
+52
+53
+student 8 received by the special office
+student 93 served by the special office, going back to office 1
+54
+student 94 received (urgent) from office 1
+student 28 going from normal office 1 to the special office
+55
+student 39 going from normal office 3 to the special office
+student 6 has been selected from office 2
+student 88 has been selected from office 3
+student 93 received (urgent) from office 1
+student 94 terminated after service at office 1
+student 20 terminated after service at office 2
+56
+student 93 terminated after service at office 1
+student 7 has been selected from office 1
+57
+student 32 has been selected from office 0
+student 40 terminated after service at office 0
+58
+student 34 has been selected from office 2
+student 6 terminated after service at office 2
+59
+student 7 going from normal office 1 to the special office
+student 35 has been selected from office 1
+student 8 served by the special office, going back to office 0
+student 68 received by the special office
+60
+61
+student 52 has been selected from office 3
+student 88 terminated after service at office 3
+student 32 terminated after service at office 0
+student 8 received (urgent) from office 0
+62
+student 8 terminated after service at office 0
+student 11 has been selected from office 0
+63
+student 34 going from normal office 2 to the special office
+student 61 has been selected from office 2
+64
+student 35 going from normal office 1 to the special office
+student 62 has been selected from office 1
+65
+student 37 received by the special office
+student 68 served by the special office, going back to office 3
+66
+student 68 received (urgent) from office 3
+student 52 going from normal office 3 to the special office
+student 61 going from normal office 2 to the special office
+student 66 has been selected from office 2
+67
+student 69 has been selected from office 0
+student 11 going from normal office 0 to the special office
+student 68 terminated after service at office 3
+student 82 has been selected from office 3
+68
+student 62 going from normal office 1 to the special office
+student 96 has been selected from office 1
+69
+70
+student 69 terminated after service at office 0
+student 98 has been selected from office 0
+71
+student 82 going from normal office 3 to the special office
+student 99 has been selected from office 3
+student 66 going from normal office 2 to the special office
+student 10 has been selected from office 2
+student 15 received by the special office
+student 37 served by the special office, going back to office 0
+72
+student 23 has been selected from office 1
+student 96 going from normal office 1 to the special office
+73
+74
+student 21 has been selected from office 3
+student 99 terminated after service at office 3
+student 15 served by the special office, going back to office 1
+student 13 received by the special office
+75
+student 15 received (urgent) from office 1
+student 23 terminated after service at office 1
+76
+student 98 terminated after service at office 0
+student 37 received (urgent) from office 0
+student 25 has been selected from office 1
+student 15 terminated after service at office 1
+77
+student 30 has been selected from office 3
+student 21 terminated after service at office 3
+student 13 served by the special office, going back to office 3
+student 37 terminated after service at office 0
+student 10 terminated after service at office 2
+student 43 has been selected from office 2
+student 28 received by the special office
+student 47 has been selected from office 0
+78
+79
+80
+student 56 has been selected from office 0
+student 47 terminated after service at office 0
+81
+student 70 has been selected from office 1
+student 25 terminated after service at office 1
+student 28 served by the special office, going back to office 1
+student 39 received by the special office
+82
+student 72 has been selected from office 2
+student 43 going from normal office 2 to the special office
+student 30 going from normal office 3 to the special office
+student 13 received (urgent) from office 3
+83
+student 13 terminated after service at office 3
+student 74 has been selected from office 3
+84
+student 70 going from normal office 1 to the special office
+student 28 received (urgent) from office 1
+student 7 received by the special office
+student 56 terminated after service at office 0
+student 92 has been selected from office 0
+student 39 served by the special office, going back to office 3
+85
+student 81 has been selected from office 2
+student 72 terminated after service at office 2
+student 28 terminated after service at office 1
+student 1 has been selected from office 1
+86
+student 39 received (urgent) from office 3
+student 74 terminated after service at office 3
+87
+student 39 terminated after service at office 3
+student 22 has been selected from office 3
+88
+89
+student 7 served by the special office, going back to office 1
+student 34 received by the special office
+90
+student 81 terminated after service at office 2
+student 48 has been selected from office 2
+student 92 going from normal office 0 to the special office
+student 85 has been selected from office 0
+student 1 going from normal office 1 to the special office
+student 7 received (urgent) from office 1
+91
+student 78 has been selected from office 3
+student 22 terminated after service at office 3
+student 7 terminated after service at office 1
+student 4 has been selected from office 1
+92
+93
+94
+student 85 going from normal office 0 to the special office
+student 48 terminated after service at office 2
+student 18 has been selected from office 2
+student 5 has been selected from office 0
+student 4 going from normal office 1 to the special office
+student 26 has been selected from office 1
+95
+student 34 served by the special office, going back to office 2
+student 35 received by the special office
+student 78 going from normal office 3 to the special office
+student 41 has been selected from office 3
+96
+97
+student 26 terminated after service at office 1
+student 53 has been selected from office 1
+98
+student 41 terminated after service at office 3
+student 58 has been selected from office 3
+99
+student 18 terminated after service at office 2
+student 35 served by the special office, going back to office 1
+student 52 received by the special office
+student 34 received (urgent) from office 2
+100
+student 5 terminated after service at office 0
+student 55 has been selected from office 0
+student 34 terminated after service at office 2
+student 64 has been selected from office 2
+101
+student 58 terminated after service at office 3
+student 63 has been selected from office 3
+102
+103
+student 55 going from normal office 0 to the special office
+student 73 has been selected from office 0
+student 35 received (urgent) from office 1
+student 53 terminated after service at office 1
+104
+student 64 going from normal office 2 to the special office
+student 35 terminated after service at office 1
+student 97 has been selected from office 2
+student 84 has been selected from office 1
+105
+student 52 served by the special office, going back to office 3
+student 61 received by the special office
+106
+student 63 terminated after service at office 3
+student 52 received (urgent) from office 3
+107
+student 76 has been selected from office 0
+student 73 going from normal office 0 to the special office
+student 84 going from normal office 1 to the special office
+student 14 has been selected from office 1
+student 52 terminated after service at office 3
+student 46 has been selected from office 3
+108
+student 97 terminated after service at office 2
+student 49 has been selected from office 2
+student 11 received by the special office
+student 61 served by the special office, going back to office 2
+109
+110
+student 67 has been selected from office 1
+student 14 terminated after service at office 1
+student 46 terminated after service at office 3
+student 71 has been selected from office 3
+111
+student 61 received (urgent) from office 2
+student 49 terminated after service at office 2
+112
+student 83 has been selected from office 0
+student 76 going from normal office 0 to the special office
+student 61 terminated after service at office 2
+113
+student 71 terminated after service at office 3
+114
+student 67 terminated after service at office 1
+student 62 received by the special office
+student 11 served by the special office, going back to office 0
+115
+116
+117
+student 83 terminated after service at office 0
+student 11 received (urgent) from office 0
+118
+student 82 received by the special office
+student 62 served by the special office, going back to office 1
+student 11 terminated after service at office 0
+student 62 received (urgent) from office 1
+119
+student 62 terminated after service at office 1
+120
+121
+122
+123
+124
+student 82 served by the special office, going back to office 3
+student 66 received by the special office
+student 82 received (urgent) from office 3
+125
+student 82 terminated after service at office 3
+126
+127
+128
+129
+130
+student 96 received by the special office
+student 66 served by the special office, going back to office 2
+student 66 received (urgent) from office 2
+131
+student 66 terminated after service at office 2
+132
+133
+134
+135
+student 96 served by the special office, going back to office 1
+student 96 received (urgent) from office 1
+student 43 received by the special office
+136
+student 96 terminated after service at office 1
+137
+138
+139
+student 30 received by the special office
+student 43 served by the special office, going back to office 2
+student 43 received (urgent) from office 2
+140
+student 43 terminated after service at office 2
+141
+142
+143
+144
+145
+student 30 served by the special office, going back to office 3
+student 30 received (urgent) from office 3
+student 70 received by the special office
+146
+student 30 terminated after service at office 3
+147
+148
+149
+student 70 served by the special office, going back to office 1
+student 92 received by the special office
+student 70 received (urgent) from office 1
+150
+student 70 terminated after service at office 1
+151
+152
+153
+154
+155
+student 1 received by the special office
+student 92 served by the special office, going back to office 0
+student 92 received (urgent) from office 0
+156
+student 92 terminated after service at office 0
+157
+158
+159
+160
+student 85 received by the special office
+student 1 served by the special office, going back to office 1
+student 1 received (urgent) from office 1
+161
+student 1 terminated after service at office 1
+162
+163
+164
+student 85 served by the special office, going back to office 0
+student 4 received by the special office
+student 85 received (urgent) from office 0
+165
+student 85 terminated after service at office 0
+166
+167
+student 78 received by the special office
+student 4 served by the special office, going back to office 1
+student 4 received (urgent) from office 1
+168
+student 4 terminated after service at office 1
+169
+170
+171
+172
+student 78 served by the special office, going back to office 3
+student 55 received by the special office
+student 78 received (urgent) from office 3
+173
+student 78 terminated after service at office 3
+174
+175
+176
+177
+178
+student 64 received by the special office
+student 55 served by the special office, going back to office 0
+student 55 received (urgent) from office 0
+179
+student 55 terminated after service at office 0
+180
+181
+182
+183
+student 64 served by the special office, going back to office 2
+student 73 received by the special office
+student 64 received (urgent) from office 2
+184
+student 64 terminated after service at office 2
+185
+186
+student 84 received by the special office
+student 73 served by the special office, going back to office 0
+student 73 received (urgent) from office 0
+187
+student 73 terminated after service at office 0
+188
+189
+190
+student 76 received by the special office
+student 84 served by the special office, going back to office 1
+student 84 received (urgent) from office 1
+191
+student 84 terminated after service at office 1
+192
+193
+194
+195
+196
+student 76 served by the special office, going back to office 0
+student 76 received (urgent) from office 0
+197
+student 76 terminated after service at office 0

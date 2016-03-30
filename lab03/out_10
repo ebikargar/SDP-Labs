@@ -1,0 +1,79 @@
+0
+1
+student 9 arrived at the queue
+student 6 arrived at the queue
+student 9 has been selected from office 0
+student 6 has been selected from office 1
+2
+3
+student 3 arrived at the queue
+student 3 has been selected from office 2
+4
+student 6 terminated after service at office 1
+5
+student 9 terminated after service at office 0
+6
+student 8 arrived at the queue
+student 8 has been selected from office 3
+7
+8
+student 5 arrived at the queue
+student 5 has been selected from office 1
+9
+student 1 arrived at the queue
+student 1 has been selected from office 0
+student 4 arrived at the queue
+student 4 has been selected from office 2
+student 7 arrived at the queue
+student 2 arrived at the queue
+student 3 terminated after service at office 2
+student 0 arrived at the queue
+10
+11
+12
+student 8 going from normal office 3 to the special office
+student 7 has been selected from office 3
+student 8 received by the special office
+13
+14
+student 1 going from normal office 0 to the special office
+student 2 has been selected from office 0
+student 5 terminated after service at office 1
+student 0 has been selected from office 1
+15
+student 8 served by the special office, going back to office 3
+student 4 going from normal office 2 to the special office
+student 1 received by the special office
+16
+student 8 received (urgent) from office 3
+student 7 terminated after service at office 3
+17
+student 0 going from normal office 1 to the special office
+student 8 terminated after service at office 3
+18
+19
+student 2 terminated after service at office 0
+20
+student 1 served by the special office, going back to office 0
+student 1 received (urgent) from office 0
+student 4 received by the special office
+21
+student 1 terminated after service at office 0
+22
+23
+24
+25
+26
+student 4 served by the special office, going back to office 2
+student 0 received by the special office
+student 4 received (urgent) from office 2
+27
+student 4 terminated after service at office 2
+28
+29
+30
+31
+student 0 served by the special office, going back to office 1
+student 0 received (urgent) from office 1
+32
+student 0 terminated after service at office 1
