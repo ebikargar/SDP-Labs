@@ -1,0 +1,9 @@
+steps:
+1 - disable paging
+2 - swap pages
+3 - reenable pages
+
+debug:
+set breakpoint on switch_page_directory
+print dir->tables[0]->pages[0]
+print dir->tables[0]->pages[1]
