@@ -1,0 +1,105 @@
+preliminary: 
+make quemu
+cat > myfile.txt
+Martino CTRL-D
+
+make quemu-gdb
+ddd:
+b syscall
+b exec
+b sys_open
+b filedup
+b filewrite
+b fork
+b wait
+b exec
+
+syscall
+8 --> SYS_exec ("/init")
+20 --> SYS_open ("console")
+11 --> SYS_dup (console -> f->ref increased to 2)
+11 --> SYS_dup (console f->ref increased to 3)
+21 (18 times) --> SYS_write ("init: starting sh\n")
+1 --> SYS_fork (also calls filedup: console f->ref becomes 6)
+3 --> SYS_wait
+8 --> SYS_exec
+20 --> SYS_open ("console")
+26 --> SYS_close (console f->ref set to 0)
+21 (2 times)--> SYS_write ("$ ")
+6 --> SYS_read (from console ref=6)
+
+cat myname.txt | wc
+6 (many times) --> SYS_read ("cat myname.txt | wc\n")
+1 --> SYS_fork (also calls filedup: console f->ref becomes 9)
+3 --> SYS_wait
+1 --> SYS_fork ref becomes 12
+20 --> SYS_open
+26 --> SYS_close
+6 --> SYS_read ("M")
+26 --> SYS_close
+11 --> SYS_dup
+6 --> SYS_read
+26 --> SYS_close
+26 --> SYS_close
+8 --> SYS_exec
+6 --> SYS_read
+6
+21 (7 times) --> SYS_write ("0 1 7\n")
+2 --> SYS_exit (probably cat)
+2 --> SYS_exit (probably wc)
+21 (2 times) --> SYS_write ("$ ")
+6 --> SYS_read (waiting for another command)
+//***************************************************************** read from file is done with n=512 (all the file is read together)
+6(20x) 1 4(sys_pipe) 3 1 26 20 6 6 21(pipe) 6 6 3 21 :::epilogue::: 2 2 21 6
+666.. 1 3 1 20("myname.txt") 6 6 21(write to pipe 7 chars) 6(read) 26(close inode) 2 2 21..6
+666.. 1 3 1 26 26 3 20 6 21 6 26 2 21x7 2 2 21x2 6
+666.. 1 3 1 26 20 26 3 6 21 6 26 2 21 3 21x6 2 2 21x2 6
+666.. 1 3 1 26 20 26 3 6 21 6 26 2 6 3 21x7 2 2 21x2 6
+666.. 1 3 1 26 26 20 6 21 6 26 2 6 3 21x7 2 2 21x2 6
+666.. 1 3 1 26 6 26 3 21 6 26 6 6 3 2 21 21 6
+666.. 1 3 4 1 1 26 26 3 3 2 21 21 6 
+666.. 1 3 26 11 26 26 26 6 20 6 21 6 26 2 21x7 2 2 21 21 6
+666.. 1 3 1 20 6 21 6 26 26 26 3 2 3 6 6 21x7 2 2 21 21 6 
+666.. 1 3 4 1 1 26 26 20 6 6 21 6 26 2 21x7 2 2 21 21 6
+666.. 1 3 26 11 26 6 20 6 21 6 26 2 21x7 2 2 21 21 6    ???
+666.. 1 3 1 20 26 26 6 11 3 6 6 21x7 2 2 21 21 6
+// only 1 proc
+666.. 1 3 13 4 1 1 26 11 26 26 8 26 26 3 26 11 26 26 8 20 6 21 6 26 2 3 6 6 21 21 21 21 21 21 21 2 2 21 21 6
+666.. 1 3 13 4 1 1 26 11 26 26 8 26 26 3 26 11 26 26 8 20 6 21 6 26 2 3 6 6 21 21 21 21 21 21 21 2 2 21 21 6
+666.. 1 3 13 4 1 26 11 26 1 26 8 26 26 26 11 26 26 3 8 20 6 21 6 26 2 6 6 3 21 21 21 21 21 21 21 2 2 21 21 6
+666.. 1 3 13 4 1 1 26 11 26 26 8 26 26 26 3 11 26 26 8 20 6 21 6 26 2 3 6 6 21 21 21...
+explanation:
+6 (x20) SYS_read from console "cat myname.txt | wc\n" one char per time
+1     SYS_fork sh forks a child that will execute the command
+3     SYS_wait sh waits for child
+13    SYS_sbrk (memory management, similar to malloc)
+4     SYS_pipe (create a pipe) fd[0] = 3, fd[1] = 4
+1     SYS_fork sh forks for becoming cat
+1     SYS_fork sh forks for becoming wc
+26    SYS_close fd = 1 (INODE with ref = 12 decreased ref to 11)
+11    SYS_dup fd = 1 (f->ref from 2 to 3)
+26    SYS_close fd = 3 (ref from 2 to 1)
+26    SYS_close fd = 4 (PIPE ref from 3 to 2)
+8     SYS_exec ("cat")
+26    SYS_close fd = 3 (PIPE ref from 2 to 1)  //DEBUG
+26    SYS_close fd = 3 (PIPE ref from 3 to 2)  //DEBUG
+3     SYS_wait
+26    SYS_close fd = 0 (INODE from 14 to 13)
+11    SYS_dup fd = 0 (PIPE from 1 to 2)
+26    SYS_close fd = 4 (PIPE from 2 to 1)
+26    SYS_close fd = 4 (P
+8     SYS_exec ("wc")
+20    SYS_open ("myname.txt")
+6     SYS_read 512 bytes from myname.txt returns 7 "Martino"
+21    SYS_write 7 bytes to the pipe
+6     SYS_read from pipe
+26    SYS_close fd = 3 INODE ref from 1 to 0 (myname.txt)
+2     SYS_exit
+3     SYS_wait
+6     SYS_read "Martino"
+6     SYS_read
+21 (x7) SYS_write "0 1 7"
+2     SYS_exit
+2     SYS_exit
+21 (x2) SYS_write "$ "
+6     SYS_read
