@@ -1,1 +1,0 @@
-cmd_/media/sf_Labs/Lab07/hello-5/hello-5.ko := ld -r -m elf_i386 -T /usr/src/linux-headers-2.6.32-5-common/scripts/module-common.lds --build-id -o /media/sf_Labs/Lab07/hello-5/hello-5.ko /media/sf_Labs/Lab07/hello-5/hello-5.o /media/sf_Labs/Lab07/hello-5/hello-5.mod.o
