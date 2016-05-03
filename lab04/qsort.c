@@ -79,6 +79,7 @@ main (int argc, char ** argv)
 
   if (fstat (fd, &stat_buf) == -1)
     perror ("fstat");
+    //size of the file
   len = stat_buf.st_size;
   n = len / sizeof (int);
 
@@ -87,6 +88,7 @@ main (int argc, char ** argv)
     perror ("mmap");
 
   close (fd);
+  // now we have a vector in virtual memory (swap partition)
   
   v = (int *) paddr;
   
@@ -96,6 +98,7 @@ main (int argc, char ** argv)
   pthread_create (&th, NULL, qsorter, region);
   pthread_join (th, &retval);  
 
+// writes are on the disk
   for(i=0;i<n;i++)
     printf("%d\n", v[i]); 
   
