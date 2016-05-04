@@ -1,11 +1,28 @@
 #include <Windows.h>
 #include <tchar.h>
-#include <stdio.h>
 
 #ifndef UNICODE
 #define UNICODE
 #define _UNICODE
 #endif // !UNICODE
+
+//----------------------------------------
+// change this value for switch the read/write called
+// can be 'A', 'B' or 'C'
+#define VERSION 'B'
+//----------------------------------------
+#if VERSION == 'A'
+#define read readFP
+#define write writeFP
+#endif // VERSION == 'A'
+#if VERSION == 'B'
+#define read readOV
+#define write writeOV
+#endif // VERSION == 'B'
+#if VERSION == 'C'
+#define read readLK
+#define write writeLK
+#endif // VERSION == 'C'
 
 #define CMD_MAX_LEN 255
 #define STR_MAX_L 30+1
@@ -58,14 +75,14 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 				if (_stscanf(command, _T("%*c %d"), &id) != 1) {
 					_tprintf(_T("Command contains some errors\n"));
 				} else {
-					readOV(id, hIn);
+					read(id, hIn);
 				}
 				break;
 			case 'W':
 				if (_stscanf(command, _T("%*c %d"), &id) != 1) {
 					_tprintf(_T("Command contains some errors\n"));
 				} else {
-					writeOV(id, hIn);
+					write(id, hIn);
 				}
 				break;
 			case 'E':
@@ -86,10 +103,41 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 
 VOID readFP(INT id, HANDLE hIn) {
 	student s;
+	LONGLONG n = id - 1;
+	LARGE_INTEGER position;
+	DWORD nRead;
+	position.QuadPart = n * sizeof(s);
+	SetFilePointerEx(hIn, position, NULL, FILE_BEGIN);
+	if (ReadFile(hIn, &s, sizeof(s), &nRead, NULL)) {
+		_tprintf(_T("id: %d\treg_number: %ld\tsurname: %10s\tname: %10s\tmark: %d\n"), s.id, s.regNum, s.surname, s.name, s.mark);
+	} else {
+		_ftprintf(stderr, _T("Error in read\n"));
+	}
 }
 
 VOID writeFP(INT id, HANDLE hIn) {
 	student s;
+	TCHAR command[CMD_MAX_LEN];
+	LONGLONG n = id - 1;
+	LARGE_INTEGER position;
+	DWORD nWritten;
+	position.QuadPart = n * sizeof(s);
+	SetFilePointerEx(hIn, position, NULL, FILE_BEGIN);
+	_tprintf(_T("You required to write student with id = %d.\nInsert the following data: \"registration_number surname name mark\"\n> "), id);
+	s.id = id;
+	while (_fgetts(command, CMD_MAX_LEN, stdin)) {
+		if (_stscanf(command, _T("%ld %s %s %d"), &s.regNum, s.surname, s.name, &s.mark) != 4) {
+			_tprintf(_T("Error in the string. The format is the following \"registration_number surname name mark\"\n> "));
+		} else {
+			break;
+		}
+
+	}
+	if (WriteFile(hIn, &s, sizeof(s), &nWritten, NULL) && nWritten == sizeof(s)) {
+		_tprintf(_T("Record with id = %d stored\n"), s.id);
+	} else {
+		_ftprintf(stderr, _T("Error in write\n"));
+	}
 }
 
 VOID readOV(INT id, HANDLE hIn) {
