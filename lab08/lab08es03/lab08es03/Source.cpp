@@ -131,7 +131,6 @@ VOID writeFP(INT id, HANDLE hIn) {
 		} else {
 			break;
 		}
-
 	}
 	if (WriteFile(hIn, &s, sizeof(s), &nWritten, NULL) && nWritten == sizeof(s)) {
 		_tprintf(_T("Record with id = %d stored\n"), s.id);
