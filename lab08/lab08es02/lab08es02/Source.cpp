@@ -1,11 +1,11 @@
-#include <Windows.h>
-#include <tchar.h>
-#include <stdio.h>
-
 #ifndef UNICODE
 #define UNICODE
 #define _UNICODE
 #endif // !UNICODE
+
+#include <Windows.h>
+#include <tchar.h>
+#include <stdio.h>
 
 #define STR_MAX_L 30+1	// extra 1 for \0
 
