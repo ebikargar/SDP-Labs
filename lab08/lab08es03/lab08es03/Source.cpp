@@ -1,10 +1,10 @@
-#include <Windows.h>
-#include <tchar.h>
-
 #ifndef UNICODE
 #define UNICODE
 #define _UNICODE
 #endif // !UNICODE
+
+#include <Windows.h>
+#include <tchar.h>
 
 //----------------------------------------
 // change this value for switch the read/write called
@@ -230,7 +230,7 @@ VOID readLK(INT id, HANDLE hIn) {
 	_tprintf(_T("You required to read student with id = %d:\n"), id);
 	// lock the portion of file. The OVERLAPPED is used to specify the starting displacement of the record to be locked
 	// and its size is specified on the 4th and 5th parameter
-	if (!LockFileEx(hIn, LOCKFILE_EXCLUSIVE_LOCK, 0, size.LowPart, size.HighPart, &ov)) {
+	if (!LockFileEx(hIn, 0, 0, size.LowPart, size.HighPart, &ov)) {
 		_ftprintf(stderr, _T("Error locking file portion. Error: %x\n"), GetLastError());
 		return;
 	}
