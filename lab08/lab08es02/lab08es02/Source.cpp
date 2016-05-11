@@ -9,13 +9,13 @@
 
 #define STR_MAX_L 30+1	// extra 1 for \0
 
-struct student {
+typedef struct _student {
 	INT id;
 	DWORD regNum;
 	TCHAR surname[STR_MAX_L];
 	TCHAR name[STR_MAX_L];
 	INT mark;
-};
+} student;
 
 INT _tmain(INT argc, LPTSTR argv[]) {
 

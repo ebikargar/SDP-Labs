@@ -27,13 +27,13 @@
 #define CMD_MAX_LEN 255
 #define STR_MAX_L 30+1	// one extra tchar for the string terminator
 
-struct student {
+typedef struct _student {
 	INT id;
 	DWORD regNum;
 	TCHAR surname[STR_MAX_L];
 	TCHAR name[STR_MAX_L];
 	INT mark;
-};
+} student;
 
 VOID readFP(INT id, HANDLE hIn);
 VOID writeFP(INT id, HANDLE hIn);
