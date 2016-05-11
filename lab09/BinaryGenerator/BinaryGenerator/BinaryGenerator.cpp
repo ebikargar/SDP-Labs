@@ -13,8 +13,6 @@ INT writeBinary(LPTSTR filename);
 
 INT _tmain(INT argc, LPTSTR argv[]) {
 
-	
-
 	if (argc <2) {
 		_ftprintf(stderr, _T("Usage: %s file_in file_out\n"), argv[0]);
 		return 1;
@@ -23,8 +21,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	for (size_t i = 1; i < argc; i++) {
 		writeBinary(argv[i]);
 	}
-
-	
+	return 0;
 }
 
 INT writeBinary(LPTSTR filename) {
