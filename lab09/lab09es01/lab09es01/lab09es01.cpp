@@ -124,12 +124,15 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		if (!(indexes[minTh] < data[minTh].length)) {
 			// if i reached the end of its result set, i turn the flag to TRUE so that in next iterations i won't use it anymore
 			endedArray[minTh] = TRUE;
+			// and free the array (i won't use it anymore)
+			free(data[minTh].vet);
 		}
 	}
 	_tprintf(_T("Sorted array: \n"));
 	for (i = 0; i < totSize; i++) {
 		_tprintf(_T("%d "), arr[i]);
 	}
+	_tprintf(_T("\n"));
 	// release resources no more needed
 	free(data);
 	free(indexes);
@@ -197,6 +200,7 @@ DWORD WINAPI sortFile(LPVOID param) {
 		if (!ReadFile(hIn, &vet[i], sizeof(n), &nRead, NULL) || nRead != sizeof(n)) {
 			_ftprintf(stderr, _T("Error reading the integers in file %s. In this file there should be %u of them. Error: %x\n"), data->filename, n, GetLastError());
 			data->length = 0;
+			free(vet);
 			return 0;
 		}
 	}
