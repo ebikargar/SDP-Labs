@@ -16,6 +16,9 @@ values contained, followed by them.
 #define UNICODE
 #define _UNICODE
 #endif // !UNICODE
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif // !_CRT_SECURE_NO_WARNINGS
 
 #include <Windows.h>
 #include <tchar.h>
@@ -33,7 +36,7 @@ DWORD WINAPI sortFile(LPVOID param);
 INT _tmain(INT argc, LPTSTR argv[]) {
 	LPHANDLE handles;
 	LPDATA_STRUCT_T data;
-	UINT i, j, k;
+	UINT i, j;
 	UINT nThreads;
 	LPUINT arr, indexes;
 	UINT totSize;
