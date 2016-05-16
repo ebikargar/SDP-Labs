@@ -152,6 +152,9 @@
     <Text Include="file1.txt" />
     <Text Include="file2.txt" />
     <Text Include="file3.txt" />
+    <Text Include="longfile1.txt" />
+    <Text Include="longfile2.txt" />
+    <Text Include="longfile3.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
