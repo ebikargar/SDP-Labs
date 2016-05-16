@@ -35,7 +35,7 @@ typedef struct _DATA_STRUCT_T {
 typedef DATA_STRUCT_T* LPDATA_STRUCT_T;
 
 DWORD WINAPI sortFile(LPVOID param);
-VOID removeHandleAndData(LPHANDLE handles, LPDATA_STRUCT_T data, LPDWORD nThreads, DWORD whoEnded_a);
+VOID removeHandleAndUpdateRealIndexes(LPHANDLE handles, LPDWORD realIndexes, LPDWORD pnThreads, DWORD indexToRemove);
 VOID merge(LPUINT a, UINT a_len, LPUINT b, UINT b_len, LPUINT res);
 
 INT _tmain(INT argc, LPTSTR argv[]) {
@@ -48,6 +48,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	HANDLE hOut;
 	DWORD nOut;
 	DWORD whoEnded_a, whoEnded_b;
+	LPDWORD realIndexes;
 
 	if (argc < 3) {
 		_ftprintf(stderr, _T("Usage: %s list_of_input_files output_file\n"), argv[0]);
@@ -58,8 +59,16 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	nThreads = argc - 2;
 	// allocate the array of handles for the threads
 	handles = (LPHANDLE)malloc((nThreads) * sizeof(HANDLE));
+	// allocate the array of real indexes where to find the data of a given thread
+	realIndexes = (LPDWORD)malloc((nThreads) * sizeof(DWORD));
 	// and allocate the array of structures for data sharing with the threads
 	data = (LPDATA_STRUCT_T)malloc((nThreads) * sizeof(DATA_STRUCT_T));
+
+	//check allocation
+	if (handles == NULL || realIndexes == NULL || data == NULL) {
+		_ftprintf(stderr, _T("Impossible to allocate some data\n"));
+		return 1;
+	}
 
 	// create the threads
 	for (i = 0; i < nThreads; i++) {
@@ -67,6 +76,8 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		j = i + 1;
 		// copy into the structure the pointer to the file name
 		data[i].filename = argv[j];
+		// and initialize the realIndex (currently the data is in the right position
+		realIndexes[i] = i;
 		// and launch the thread
 		handles[i] = CreateThread(0, 0, sortFile, (LPVOID)&data[i], 0, NULL);
 		// check the handle value
@@ -74,41 +85,60 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 			// if unable to create a thread, better to terminate immediately the process
 			_ftprintf(stderr, _T("Impossible to create thread %d\n"), j);
 			// the return statement on the main will exit the current process (every thread)
-			return 1;
+			return 2;
 		}
 	}
-	
-	// TODO checks on number of threads (assumed that at least 2 threads provide results)
+
+	// wait for the first thread to end
 	whoEnded_a = WaitForMultipleObjects(nThreads, handles, FALSE, INFINITE);
 	whoEnded_a -= WAIT_OBJECT_0;
-	totSize = data[whoEnded_a].length;
-	// TODO check totSize (find the first thread with some content to provide)
+	// read how may values
+	totSize = data[realIndexes[whoEnded_a]].length;
+	// allocate an array
 	arr = (LPUINT)malloc(totSize * sizeof(UINT));
-	memcpy(arr, data[whoEnded_a].vet, totSize * sizeof(UINT));
-	removeHandleAndData(handles, data, &nThreads, whoEnded_a);
+	// and copy to it the content of the ended thread
+	memcpy(arr, data[realIndexes[whoEnded_a]].vet, totSize * sizeof(UINT));
+	// free the array of the results of the thread (only if it has been allocated)
+	if (data[realIndexes[whoEnded_a]].length > 0) {
+		free(data[realIndexes[whoEnded_a]].vet);
+	}
+	// remove the handle from the array and play with indexes to redirect them
+	removeHandleAndUpdateRealIndexes(handles, realIndexes, &nThreads, whoEnded_a);
 
+	// while there are still some threads, wait for them
 	while (nThreads > 0) {
+		// wait for a thread
 		whoEnded_b = WaitForMultipleObjects(nThreads, handles, FALSE, INFINITE);
 		whoEnded_b -= WAIT_OBJECT_0;
-		totSize2 = totSize + data[whoEnded_b].length;
-		// TODO also there chech if thread can provide data
+		// sum up the size of the actual array and the results of the ended thread
+		totSize2 = totSize + data[realIndexes[whoEnded_b]].length;
+		// allocate a new array
 		arr2 = (LPUINT)malloc(totSize2 * sizeof(UINT));
-		merge(arr, totSize, data[whoEnded_b].vet, data[whoEnded_b].length, arr2);
+		// merge the actual array and results of the thread in the new array
+		merge(arr, totSize, data[realIndexes[whoEnded_b]].vet, data[realIndexes[whoEnded_b]].length, arr2);
+		// free the old array
 		free(arr);
+		// update the pointer: now arr refers to the new array
 		arr = arr2;
+		// update the total size
 		totSize = totSize2;
-		removeHandleAndData(handles, data, &nThreads, whoEnded_b);
+		// free the results array of the ended thread
+		if (data[realIndexes[whoEnded_b]].length > 0) {
+			free(data[realIndexes[whoEnded_b]].vet);
+		}
+		// remove the handle from the array and play with indexes to redirect them
+		removeHandleAndUpdateRealIndexes(handles, realIndexes, &nThreads, whoEnded_b);
 	}
+	// release some resources
 	free(handles);
-
-	
+	free(realIndexes);
+	free(data);
+	// print the resulting array
 	_tprintf(_T("Sorted array: \n"));
 	for (i = 0; i < totSize; i++) {
 		_tprintf(_T("%d "), arr[i]);
 	}
 	_tprintf(_T("\n"));
-	// release resources no more needed
-	free(data);
 
 	// now comes the output file
 	hOut = CreateFile(argv[argc - 1], GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
@@ -121,14 +151,14 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		_ftprintf(stderr, _T("Error writing the total nunmber of integers. Error: %x\n"), GetLastError());
 		free(arr);
 		CloseHandle(hOut);
-		return 2;
+		return 3;
 	}
 	// write the integers
 	if (!WriteFile(hOut, arr, totSize * sizeof(UINT), &nOut, NULL) || nOut != totSize * sizeof(UINT)) {
 		_ftprintf(stderr, _T("Error writing the integers. Error: %x\n"), GetLastError());
 		free(arr);
 		CloseHandle(hOut);
-		return 3;
+		return 4;
 	}
 
 	_tprintf(_T("Written correctly to output file %s\n"), argv[argc - 1]);
@@ -190,11 +220,7 @@ DWORD WINAPI sortFile(LPVOID param) {
 			}
 		}
 	}
-	/*
-	for (i = 0; i < n; i++) {
-	_tprintf(_T("%d "), vet[i]);
-	}
-	*/
+	
 	// set the results inside the structure
 	data->length = n;
 	data->vet = vet;
@@ -205,17 +231,23 @@ DWORD WINAPI sortFile(LPVOID param) {
 	return 0;
 }
 
-VOID removeHandleAndData(LPHANDLE handles, LPDATA_STRUCT_T data, LPDWORD pnThreads, DWORD indexToRemove) {
+// this function removes the specified handle specified as index, and updates the realIndexes array that contains
+// the original positions of the structures used by threads inside the data array. They can't be moved because the threads
+// still need to modify them.
+// each thread uses his data passed through a pointer to the element in the array data, and the main uses data[realIndexes[i]]
+// to access the data of the i-th element of the compacted array (corresponding to the realIndexes[i] element in the original array
+VOID removeHandleAndUpdateRealIndexes(LPHANDLE handles, LPDWORD realIndexes, LPDWORD pnThreads, DWORD indexToRemove) {
+	// can close the handle to this thread
 	CloseHandle(handles[indexToRemove]);
-	if (data[indexToRemove].length > 0) {
-		free(data[indexToRemove].vet);
-		data[indexToRemove].vet = NULL;
-	}
 	if (*pnThreads > 0) {
+		// decrease the number of threads
 		(*pnThreads)--;
+		// if the ended thread is not the last one, take the last element and put in the position of the ended one
 		if (indexToRemove != *pnThreads) {
+			// overwrite the handle
 			handles[indexToRemove] = handles[*pnThreads];
-			data[indexToRemove] = data[*pnThreads];
+			// and say: the real position (index) of the data of this thread will be where this thread was in the original array
+			realIndexes[indexToRemove] = realIndexes[*pnThreads];
 		}
 	}
 }
@@ -224,10 +256,12 @@ VOID merge(LPUINT a, UINT a_len, LPUINT b, UINT b_len, LPUINT res) {
 	DWORD i, j, k;
 	for (i = 0, j = 0, k = 0; i < a_len + b_len; i++) {
 		if (j == a_len) {
+			// the a array ended
 			assert(k < b_len);
 			res[i] = b[k];
 			k++;
 		} else if (k == b_len) {
+			// the b array ended
 			assert(j < a_len);
 			res[i] = a[j];
 			j++;
