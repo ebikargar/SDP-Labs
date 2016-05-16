@@ -14,6 +14,9 @@ integers are written in their binary representation
 #define UNICODE
 #define _UNICODE
 #endif // !UNICODE
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif // !CRT_SECURE_NO_WARNINGS
 
 #include <Windows.h>
 #include <tchar.h>
