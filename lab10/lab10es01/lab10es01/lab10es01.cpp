@@ -21,13 +21,14 @@ applications to have problems opening the modified files, but who cares!).
 
 #include <Windows.h>
 #include <tchar.h>
+#include <assert.h>
 
 #define TYPE_FILE 1
 #define TYPE_DIR 2
 #define TYPE_DOT 3
 
 VOID addDataFieldsToFile(LPTSTR path1, LPTSTR path2);
-VOID copyDirectoryAndDo(LPTSTR path1, LPTSTR path2, DWORD level, VOID (*whatToDo)(LPTSTR, LPTSTR));
+VOID copyDirectoryAndDo(LPTSTR path1, LPTSTR path2, DWORD level, VOID(*whatToDo)(LPTSTR, LPTSTR));
 static DWORD FileType(LPWIN32_FIND_DATA pFileData);
 VOID cleanPath(LPTSTR);
 
@@ -53,7 +54,7 @@ VOID copyDirectoryAndDo(LPTSTR path1, LPTSTR path2, DWORD level, VOID(*whatToDo)
 	TCHAR newPath1[MAX_PATH], newPath2[MAX_PATH];
 
 	// build the searchPath string, to be able to search inside path1: searchPath = path1\*
-	_sntprintf(searchPath, MAX_PATH-1, _T("%s\\*"), path1);
+	_sntprintf(searchPath, MAX_PATH - 1, _T("%s\\*"), path1);
 
 	// create a corresponding folder in the destination subtree
 	if (!CreateDirectory(path2, NULL)) {
@@ -98,11 +99,10 @@ static DWORD FileType(LPWIN32_FIND_DATA pFileData) {
 	FType = TYPE_FILE;
 	IsDir = (pFileData->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 	if (IsDir)
-		if (lstrcmp(pFileData->cFileName, _T(".")) == 0
-			|| lstrcmp(pFileData->cFileName, _T("..")) == 0)
+		if (lstrcmp(pFileData->cFileName, _T(".")) == 0 || lstrcmp(pFileData->cFileName, _T("..")) == 0)
 			FType = TYPE_DOT;
 		else FType = TYPE_DIR;
-		return FType;
+	return FType;
 }
 
 VOID addDataFieldsToFile(LPTSTR path1, LPTSTR path2) {
@@ -131,6 +131,7 @@ VOID addDataFieldsToFile(LPTSTR path1, LPTSTR path2) {
 		return;
 	}
 	// assumption: file is less tha 4GB (only 32 low bits of fileSize are used
+	assert(fileSize.HighPart == 0);
 	// allocate a buffer (who cares of the type of data)
 	buffer = (LPCH)malloc(fileSize.LowPart);
 	if (buffer == NULL) {
