@@ -1,0 +1,113 @@
+System and Device Programming
+Laboratory number 10 (03 part II)
+
+
+
+Note
+----
+
+All students are requested to *up-load* on the class "portal" web page
+the solution of Exercise 03.
+Up-load the source code, i.e., the ".cpp" file (in tar-gzipped format,
+if necessary), with explanatory comments on top of the program
+(if necessary).
+Please, follow the course rules to deliver the laboratory solution.
+
+
+
+Laboratory target
+-----------------
+
+- Manipulate file systems
+- Write recursive multi-threaded programs
+- Run threads with proper synchronization when necessary
+
+
+
+Exercise 01
+-----------
+
+Modify a directory tree while copying it.
+
+A C program is run with two parameters
+name1 name2
+where name1 and name2 are C strings which indicates relative
+or absolute paths of two directory trees.
+
+The program has to copy the directory name1 into an isomorphic
+directory name2.
+For each copied file, the program has to add two data fields
+on top ot the file specifying:
+- the first one, the name of the file (C string) 
+- the second one specifies the size of the original files
+  (a 32-bit integer value).
+
+
+
+Exercise 02 (versions A, B and C)
+---------------------------------
+
+Visit N directory trees with N threads.
+
+A C program is run with N parameters.
+Each parameter indicates a relative or an absolute path to
+a file system directory.
+
+The program has to run N threads (one for each argument).
+Each thread recursively visits one of the directory and
+for each directory entry it prints-out its identifier and
+the directory entry name.
+The main thread awaits for the termination off all threads.
+When all threads have visited their directory the program
+ends.
+
+Version B and C:
+When the output is generated independently by each single thread,
+printing messages from different threads are interleaved on standard
+output.
+To avoid merging all printing operations use the following
+techniques:
+Version B
+  Each thread stores its output on a file whose name is generated
+  based on its thread identifier.
+  When the thread ends, the main thread copies this file on standard
+  output without interruption.
+Version C
+  Use a single "protected" output routine to print-out all output
+  messages coming from all threads.
+
+
+
+Exercise 03
+-----------
+
+Compare directory.
+
+A C program is run with N parameters.
+Each parameter indicates a relative or an absolute path to
+a file system directory tree.
+
+The program has to compare the content of all directories
+to decide whether all directories have the same content or not.
+
+Two directories have the same content *if and only if* all directory
+entries (files and sub-directories) have the same name (excluding the
+path leading to the root, which differ, in general).
+Notice that, it can be supposed that, in case of equivalent directory
+trees, all visits proceed in the same order, i.e., they deliver the
+same entry order.
+
+Upon termination the program has to state whether all directory have
+the same content or not.
+
+Suggestions:
+- The main program run one "reading" thread for each directory tree
+  plus one "comparison" thread 
+- Each "reading" thread visits one of the directory tree
+- For each file/directory found "reading" threads synchronize
+  themselves by activating the "comparison" thread
+- The "comparison" thread compares the name of all entries found.
+  It stops all other threads (and the program) in case the entries are
+  not the same.
+  Otherwise, it returns the control to the "reading" threads.
+
