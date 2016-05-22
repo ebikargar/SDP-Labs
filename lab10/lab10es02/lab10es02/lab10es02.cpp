@@ -79,7 +79,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 	InitializeCriticalSection(&cs);
 	for (i = 0; i < nThreads; i++) {
-		tHandles[i] = CreateThread(0, 0, visitDirectory, argv[i + 1], 0, NULL);
+		tHandles[i] = CreateThread(0, 0, visitDirectory, argv[i + 1], 0, &threadIds[i]);
 		if (tHandles[i] == INVALID_HANDLE_VALUE) {
 			_ftprintf(stderr, _T("Error creating thread\n"));
 			return 3;
@@ -87,7 +87,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 	WaitForMultipleObjects(nThreads, tHandles, TRUE, INFINITE);
 	for (i = 0; i < nThreads; i++) {
-		threadIds[i] =  GetThreadId(tHandles[i]);
+		//threadIds[i] =  GetThreadId(tHandles[i]);
 		CloseHandle(tHandles[i]);
 		collectData(threadIds[i]);
 	}
@@ -231,7 +231,7 @@ VOID visitDirectoryRAndDo(LPTSTR path1, DWORD level, VOID(*toDo)(LPTSTR path, LP
 			// this is a directory
 			//_tprintf(_T("DIR %s\n"), path1);
 			// recursive call to the new paths
-			visitDirectoryRAndDo(newPath1, level + 1, whatToDo, fHandle);
+			visitDirectoryRAndDo(newPath1, level + 1, toDo, fHandle);
 		}
 	} while (FindNextFile(hFind, &findFileData));
 
