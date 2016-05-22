@@ -18,7 +18,8 @@ not.
 #define _CRT_SECURE_NO_WARNINGS
 #endif // !_CRT_SECURE_NO_WARNINGS
 
-#define DEBUG
+// DEBUG set to 1 allows a verbose output
+#define DEBUG 1
 
 #include <Windows.h>
 #include <tchar.h>
@@ -29,20 +30,23 @@ not.
 #define TYPE_DIR 2
 #define TYPE_DOT 3
 
-#define readersSemaphoreName _T("lab10es03_ReadersSemaphore")
+// name rules for semaphores
+#define readerSemaphoreNameTemplate _T("lab10es03_ReaderSemaphore")
 #define comparatorSemaphoreName _T("lab10es03_ComparatorSemaphore")
 
+// structure that will be passed as parameter to a reader thread
 typedef	struct _readerparam {
 	volatile BOOL terminate;	// can be set by comparator
 	volatile BOOL done;			// can be set by reader
-	LPHANDLE readersSemaphore;	// readers wait on it
+	LPHANDLE readerSemaphore;	// reader waits on it
 	LPHANDLE comparatorSemaphore;	// comparator waits on it
-	TCHAR entry[MAX_PATH];		// the partial path to be compared
-	LPTSTR path;
+	TCHAR entry[MAX_PATH];		// the path to be compared
+	LPTSTR path;				// the initial path to explore, is used also to compare entries (this part is discarded)
 } READERPARAM;
 
 typedef READERPARAM* LPREADERPARAM;
 
+// structure that will be passed as parameter to the comparator thread
 typedef	struct _comparatorparam {
 	DWORD nReaders;
 	LPREADERPARAM params;
@@ -68,7 +72,8 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	LPREADERPARAM readerParams;
 	COMPARATORPARAM comparatorParam;
 
-	HANDLE readersSemaphore, comparatorSemaphore;
+	HANDLE comparatorSemaphore;
+	LPHANDLE readersSemaphore;
 
 	if (argc < 2) {
 		_ftprintf(stderr, _T("Usage: %s list_of_folders_to_be_visited\n"), argv[0]);
@@ -80,7 +85,10 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		_ftprintf(stderr, _T("Error allocating space for threads\n"));
 		return 2;
 	}
-	readersSemaphore = CreateSemaphore(NULL, nReaders, nReaders, readersSemaphoreName);
+	readersSemaphore = (LPHANDLE)malloc(nReaders * sizeof(HANDLE));
+	if (readersSemaphore == NULL) {
+		_ftprintf(stderr, _T("Error allocating the semaphores\n"));
+	}
 	comparatorSemaphore = CreateSemaphore(NULL, 0, nReaders, comparatorSemaphoreName);
 	if (readersSemaphore == INVALID_HANDLE_VALUE || comparatorSemaphore == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Error Creating the semaphores\n"));
@@ -94,8 +102,16 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 
 	for (i = 0; i < nReaders; i++) {
+		TCHAR semaphoreName[MAX_PATH];
+		_stprintf(semaphoreName, _T("%s%d"), readerSemaphoreNameTemplate, i);
+		readersSemaphore[i] = CreateSemaphore(NULL, 1, 1, semaphoreName);
+		if (readersSemaphore[i] == INVALID_HANDLE_VALUE) {
+			_ftprintf(stderr, _T("Error Creating a semaphore\n"));
+			return 5;
+		}
+
 		readerParams[i].comparatorSemaphore = &comparatorSemaphore;
-		readerParams[i].readersSemaphore = &readersSemaphore;
+		readerParams[i].readerSemaphore = &readersSemaphore[i];
 		readerParams[i].done = FALSE;
 		readerParams[i].terminate = FALSE;
 		//readerParams[i].entry = NULL;
@@ -111,7 +127,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	comparatorParam.nReaders = nReaders;
 	comparatorParam.params = readerParams;
 	comparatorParam.comparatorSemaphore = &comparatorSemaphore;
-	comparatorParam.readersSemaphore = &readersSemaphore;
+	comparatorParam.readersSemaphore = readersSemaphore;
 
 	comparatorHandle = CreateThread(NULL, 0, comparatorThreadFunction, &comparatorParam, 0, NULL);
 	if (comparatorHandle == INVALID_HANDLE_VALUE) {
@@ -141,15 +157,17 @@ DWORD WINAPI readerThreadFunction(LPVOID param) {
 	earlyTermination = !visitDirectoryRAndDo(readerParam, readerParam->path, 0, whatToDo);
 
 	// the visit finished
-#ifdef DEBUG
+#if DEBUG
 	_tprintf(_T("reader: finished. Early termination: %d\n"), earlyTermination);
 #endif // DEBUG
 	if (earlyTermination) {
 		// TODO this should be not necessary, after fix on semaphores
+		//WaitForSingleObject(*readerParam->readerSemaphore, INFINITE);
 		readerParam->done = 1;
+		ReleaseSemaphore(*readerParam->comparatorSemaphore, 1, NULL);
 		return 0;
 	} else {
-		WaitForSingleObject(*readerParam->readersSemaphore, INFINITE);
+		WaitForSingleObject(*readerParam->readerSemaphore, INFINITE);
 		readerParam->done = 1;
 		ReleaseSemaphore(*readerParam->comparatorSemaphore, 1, NULL);
 		return 0;
@@ -174,6 +192,7 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 		for (i = 0; i < comparatorParam->nReaders; i++) {
 			WaitForSingleObject(*comparatorParam->comparatorSemaphore, INFINITE);
 		}
+		//WaitForMultipleObjects(comparatorParam->nReaders, comparatorParam->readersSemaphore, TRUE, INFINITE);
 		// compare
 		//_tprintf(_T("comparator: comparing\n"));
 		for (i = 0; i < comparatorParam->nReaders; i++) {
@@ -182,13 +201,13 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 			} else {
 				someContinue = TRUE;
 				if (strToCompare == NULL) {
-#ifdef DEBUG
+#if DEBUG
 					_tprintf(_T("comparator: first entry:   %s\n"), comparatorParam->params[i].entry);
 #endif // DEBUG
 					strToCompare = getEntryPartialPath(&comparatorParam->params[i]);
 					//strToCompare = comparatorParam->params[i].entry;
 				} else {
-#ifdef DEBUG
+#if DEBUG
 					_tprintf(_T("comparator: another entry: %s\n"), comparatorParam->params[i].entry);
 #endif // DEBUG
 					if (_tcsncmp(strToCompare, getEntryPartialPath(&comparatorParam->params[i]), MAX_PATH) != 0) {
@@ -200,13 +219,13 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 			}
 		}
 		if (someFinished && someContinue) {
-#ifdef DEBUG
+#if DEBUG
 			_tprintf(_T("comparator: some finished and some continue\n"));
 #endif // DEBUG
 			different = TRUE;
 		}
 		if (different) {
-#ifdef DEBUG
+#if DEBUG
 			_tprintf(_T("comparator: different\n"));
 #endif // DEBUG
 			for (i = 0; i < comparatorParam->nReaders; i++) {
@@ -214,9 +233,10 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 			}
 		}
 		// signal nReader times on reader semaphore
-		//_tprintf(_T("comparator: relasing reader semaphore\n"));
-		ReleaseSemaphore(*comparatorParam->readersSemaphore, comparatorParam->nReaders, NULL);
-		//_tprintf(_T("comparator: different: %d\n"), different);
+		//ReleaseSemaphore(*comparatorParam->readersSemaphore, comparatorParam->nReaders, NULL);
+		for (i = 0; i < comparatorParam->nReaders; i++) {
+			ReleaseSemaphore(comparatorParam->readersSemaphore[i], 1, NULL);
+		}
 	}
 	_tprintf(_T("Comparator result: the subtrees are %s\n"), different ? _T("different") : _T("equal"));
 	return 0;
@@ -224,15 +244,15 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 
 BOOL whatToDo(LPREADERPARAM param, LPTSTR entry) {
 	//_tprintf(_T("reader: Waiting on readers semaphore\n"));
-	WaitForSingleObject(*param->readersSemaphore, INFINITE);
-#ifdef DEBUG
+	WaitForSingleObject(*param->readerSemaphore, INFINITE);
+#if DEBUG
 	_tprintf(_T("reader: entry: %s\n"), entry);
 #endif // DEBUG
 	_tcsncpy(param->entry, entry, MAX_PATH);
 	//_tprintf(_T("reader: Releasing the comparator semaphore\n"));
 	ReleaseSemaphore(*param->comparatorSemaphore, 1, NULL);
 	if (param->terminate) {
-#ifdef DEBUG
+#if DEBUG
 		_tprintf(_T("reader: they told me to terminate\n"));
 #endif // DEBUG
 		return FALSE;
