@@ -113,7 +113,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	// for each reader
 	for (i = 0; i < nReaders; i++) {
 		// create a name for the semaphore
-		_stprintf(semaphoreName, _T("%s%d"), readerSemaphoreNameTemplate, i);
+		_stprintf(semaphoreName, _T("%s%u"), readerSemaphoreNameTemplate, i);
 		// create the semaphore (can have counter 0 or 1, initially 1 --> free)
 		readersSemaphore[i] = CreateSemaphore(NULL, 1, 1, semaphoreName);
 		if (readersSemaphore[i] == INVALID_HANDLE_VALUE) {
@@ -150,9 +150,13 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	// wait the termination of the readers
 	WaitForMultipleObjects(nReaders, readersHandles, TRUE, INFINITE);
 	for (i = 0; i < nReaders; i++) {
+		// want to be sure that it is not null
+		assert(readersHandles[i]);
 		CloseHandle(readersHandles[i]);
 	}
 	free(readersHandles);
+	// want to be sure that it is not null
+	assert(comparatorHandle);
 	// wait the termination of the comparator
 	WaitForSingleObject(comparatorHandle, INFINITE);
 	CloseHandle(comparatorHandle);
@@ -276,6 +280,7 @@ BOOL visitDirectoryRAndDo(LPREADERPARAM param, LPTSTR path, DWORD level, BOOL(*t
 
 	// build the searchPath string, to be able to search inside path: searchPath = path\*
 	_sntprintf(searchPath, MAX_PATH - 1, _T("%s\\*"), path);
+	searchPath[MAX_PATH - 1] = 0;
 
 	// search inside path
 	hFind = FindFirstFile(searchPath, &findFileData);

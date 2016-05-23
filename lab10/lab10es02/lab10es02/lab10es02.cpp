@@ -87,7 +87,8 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 	WaitForMultipleObjects(nThreads, tHandles, TRUE, INFINITE);
 	for (i = 0; i < nThreads; i++) {
-		//threadIds[i] =  GetThreadId(tHandles[i]);
+		// want to be sure that it is not NULL
+		assert(tHandles[i]);
 		CloseHandle(tHandles[i]);
 		collectData(threadIds[i]);
 	}
@@ -102,7 +103,7 @@ DWORD WINAPI visitDirectoryA(LPVOID param) {
 }
 
 VOID whatToDoA(LPTSTR path, LPTSTR entryName, HANDLE fHandle) {
-	_tprintf(_T("%d - %s\n"), GetCurrentThreadId(), entryName);
+	_tprintf(_T("%u - %s\n"), GetCurrentThreadId(), entryName);
 	return;
 }
 
@@ -133,10 +134,11 @@ VOID whatToDoB(LPTSTR path, LPTSTR entryName, HANDLE fHandle) {
 	DWORD strLen;
 	DWORD nWrote;
 	TCHAR line[MAX_PATH + 20];
-	_stprintf(line, _T("%d - %s\n"), GetCurrentThreadId(), entryName);
+	_stprintf(line, _T("%u - %s\n"), GetCurrentThreadId(), entryName);
 	strLen = (DWORD)_tcscnlen(line, MAX_PATH + 20);
+	assert(strLen < MAX_PATH + 20);
 	if (!WriteFile(fHandle, line, strLen * sizeof(TCHAR), &nWrote, NULL) || nWrote != strLen * sizeof(TCHAR)) {
-		_ftprintf(stderr, _T("%d - Error writing file"), GetCurrentThreadId());
+		_ftprintf(stderr, _T("%u - Error writing file"), GetCurrentThreadId());
 	}
 	return;
 }
@@ -193,7 +195,7 @@ DWORD WINAPI visitDirectoryC(LPVOID param) {
 }
 
 VOID whatToDoC(LPTSTR path, LPTSTR entryName, HANDLE fHandle) {
-	_tprintf(_T("%d - %s\n"), GetCurrentThreadId(), entryName);
+	_tprintf(_T("%u - %s\n"), GetCurrentThreadId(), entryName);
 	return;
 }
 
@@ -209,6 +211,7 @@ VOID visitDirectoryRAndDo(LPTSTR path1, DWORD level, VOID(*toDo)(LPTSTR path, LP
 
 	// build the searchPath string, to be able to search inside path1: searchPath = path1\*
 	_sntprintf(searchPath, MAX_PATH - 1, _T("%s\\*"), path1);
+	searchPath[MAX_PATH - 1] = 0;
 
 	// search inside path1
 	hFind = FindFirstFile(searchPath, &findFileData);
@@ -253,6 +256,9 @@ static DWORD FileType(LPWIN32_FIND_DATA pFileData) {
 
 LPTSTR getFileNameByThreadId(DWORD tId) {
 	LPTSTR result = (LPTSTR)malloc(MAX_PATH * sizeof(TCHAR));
-	_stprintf(result, _T("temp%d.txt"), tId);
+	if (result == NULL) {
+		return NULL;
+	}
+	_stprintf(result, _T("temp%u.txt"), tId);
 	return result;
 }

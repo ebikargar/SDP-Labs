@@ -55,6 +55,7 @@ VOID copyDirectoryAndDo(LPTSTR path1, LPTSTR path2, DWORD level, VOID(*whatToDo)
 
 	// build the searchPath string, to be able to search inside path1: searchPath = path1\*
 	_sntprintf(searchPath, MAX_PATH - 1, _T("%s\\*"), path1);
+	searchPath[MAX_PATH - 1] = 0;
 
 	// create a corresponding folder in the destination subtree
 	if (!CreateDirectory(path2, NULL)) {
