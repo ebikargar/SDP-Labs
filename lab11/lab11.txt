@@ -1,0 +1,167 @@
+System and Device Programming
+Laboratory number 11 (04 part II)
+
+
+
+Note
+----
+
+All students are requested to *up-load* on the class "portal" web page
+the solution of Exercise 01-D.
+Up-load the source code, i.e., the ".cpp" file (in tar-gzipped format,
+if necessary), with explanatory comments on top of the program
+(if necessary).
+Please, follow the course rules to deliver the laboratory solution.
+
+
+
+Laboratory target
+-----------------
+
+- Run threads.
+- Synchronize threads with several different strategies.
+
+
+
+Exercise 01 (versions A, B, C and D)
+-------------------------------------
+
+A BINARY file defines the balance (i.e., the amount on money) in all
+bank accounts held in a small bank branch (this kind of file is called
+"ACCOUNT" file).
+The file stores each bank account data on a single line, with
+the following format:
+- an identifier, i.e., an integer value varying from 1 to the number
+  of rows in the file (e.g., 1, 2, etc.)
+- the bank account number, i.e., a long integer (e.g., 164678)
+- the surname account holder, i.e., a string of maximum 30 characters
+  (e.g., Rossi)
+- the name account holder, i.e., a string of maximum 30 characters
+  (e.g., Mario)
+- the bank account balance amount, i.e., an integer value (of a sum in
+  euro).
+
+The following is a correct example of such a file (in ASCII/text
+format):
+
+1 100000 Romano Antonio 1250
+2 150000 Fabrizi Aldo 2245
+3 200000 Verdi Giacomo 11115
+4 250000 Rossi Luigi 13630
+
+Another BINARY file specifies operations done on the bank accounts.
+This file (called "OPERATION" file) has the same format of the
+ACCOUNT file, i.e.:
+
+1 100000 Romano Antonio +50
+3 200000 Verdi Giacomo +115
+1 100000 Romano Antonio +250
+1 100000 Romano Antonio -55
+3 200000 Verdi Giacomo -1015
+
+(in ASCII/text format) where each positive amount describe a deposit
+in the bank account, and each negative number a withdrawal.
+
+Write a C program in the MS Visual Studio environment satisfying the
+following specification:
+- The program receives N parameters on the command line.
+  The first parameter specify the name of an ACCOUNT file.
+  All other parameters indicate the name of OPERATION files.
+- The program has to open the ACCOUNT file, and then run N-1 threads
+  (one for each OPERATION file).
+- Each thread is in charge of reading and performing on the ACCOUNT
+  file the set of operations specified on the related OPERATION file.
+  The target of the program is to compute the final balance for all
+  bank accounts in the ACCOUNT file.
+  Obviously, threads have to be properly synchronized to avoid
+  contemporary operations on the same bank account (i.e., OPERATION
+  file 1 specifies a deposit on bank account 10, whereas OPERATION file
+  3 specifies a withdrawal).
+- When all threads have done their job, i.e., they have read their
+  OPERATION file till the end, the resulting ACCOUNT file has to be
+  printed-out on standard output by the main process, and all files
+  have to be closed.
+
+Write 4 versions of the program:
+
+Version A:
+  mutual exclusion is guaranteed adopting file locking
+  applied on a line-by-line basis (i.e., each thread
+  locks just the record it must modify).
+
+Version B:
+  a critical section is used to lock the entire ACCOUNT
+  file
+
+Version C:
+  same as exercise 02, but using mutexes
+
+Version D:
+  same as exercise 02, but using semaphores
+
+
+
+Exercise 02
+-----------
+
+Realize in the Windows environment a producer/consumer application
+with the following characteristics:
+
+1. There are P producers and C consumers
+2. Producers and consumers communicate using a circular buffer.
+   The circular buffer is implemented as a queue on a dynamic array of
+   size N.
+3. Each producer inserts in the queue integer values (randomly
+   generated) at random time intervals (varying from 0 to T seconds).
+4. Each consumer extracts from the queue an integer value at random
+   time intervals (varying from 0 to T seconds) and prints it out on
+   standard output with its personal thread identifier.
+
+Note that:
+- The integer values P, C, N, and T are passed to the program on the
+  command line
+- The circular queue has to be properly protected, to avoid:
+  - insertions in a full queue
+  - extractions from an empty queue
+  - insertions by two producers at the same time
+  - extractions by two consumers at the same time
+  See previous lessons or the following scheme for more details.
+
+Suggestion
+----------
+
+Please remember the Producer/Consumer logical scheme (with more than
+one producer and more than one consumer):
+
+>>>
+
+init (full, 0);
+init (empty, N);
+init (MEp, 1);
+init (MEc, 1)
+
+Producer () {
+  Message m;
+  while (TRUE) {
+    produce m;
+    wait (empty);
+    wait (MEp);
+    enqueue (m);
+    signal (MEp);
+    signal (full);
+  }
+}               
+
+Consumer () {
+  Message m;
+  while (TRUE) {
+    wait (full);
+    wait (MEc);
+    m = dequeue ();
+    signal (MEc);
+    signal (empty)
+    print-out m;
+  }
+}
+
+>>>
