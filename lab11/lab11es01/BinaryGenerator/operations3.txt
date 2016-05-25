@@ -1,0 +1,5 @@
+1 100000 Romano Antonio +50
+3 200000 Verdi Giacomo +115
+1 100000 Romano Antonio +250
+1 100000 Romano Antonio -55
+3 200000 Verdi Giacomo -1015
