@@ -24,28 +24,24 @@ TODO description
 
 #if VERSION == 'A'
 #define initializeSync initializeSyncA
-#define openAccountsFile openAccountsFileFake
 #define initThread initThreadReal
 #define acquireSync acquireSyncA
 #define releaseSync releaseSyncA
 #endif // VERSION == 'A'
 #if VERSION == 'B'
 #define initializeSync initializeSyncB
-#define openAccountsFile openAccountsFileReal
 #define initThread initThreadFake
 #define acquireSync acquireSyncB
 #define releaseSync releaseSyncC
 #endif // VERSION == 'B'
 #if VERSION == 'C'
 #define initializeSync initializeSyncC
-#define openAccountsFile openAccountsFileReal
 #define initThread initThreadFake
 #define acquireSync acquireSyncC
 #define releaseSync releaseSyncC
 #endif // VERSION == 'C'
 #if VERSION == 'D'
 #define initializeSync initializeSyncD
-#define openAccountsFile openAccountsFileReal
 #define initThread initThreadFake
 #define acquireSync acquireSyncD
 #define releaseSync releaseSyncD
@@ -84,8 +80,7 @@ BOOL initializeSyncA(LPSYNC_OBJ);
 BOOL initializeSyncB(LPSYNC_OBJ);
 BOOL initializeSyncC(LPSYNC_OBJ);
 BOOL initializeSyncD(LPSYNC_OBJ);
-HANDLE openAccountsFileFake(LPTSTR);
-HANDLE openAccountsFileReal(LPTSTR);
+HANDLE openAccountsFile(LPTSTR);
 BOOL initThreadReal(LPPARAM);
 BOOL initThreadFake(LPPARAM);
 BOOL acquireSyncA(LPSYNC_OBJ, OVERLAPPED);
@@ -163,14 +158,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 	free(params);
 	free(tHandles);
-	// version A needs to open the file
-	if (!hAccounts) {
-		hAccounts = openAccountsFileReal(argv[1]);
-		if (hAccounts == INVALID_HANDLE_VALUE) {
-			_ftprintf(stderr, _T("Error reading the accounts file. Error: %x"), GetLastError());
-			return 5;
-		}
-	}
+
 	_tprintf(_T("This is the content of the accounts file after processing the operations:\n"));
 	displayRecords(hAccounts);
 	CloseHandle(hAccounts);
@@ -231,15 +219,16 @@ DWORD WINAPI doOperations(LPVOID p) {
 	return 0;
 }
 
-HANDLE openAccountsFileFake(LPTSTR) {
-	// do nothing, accounts file is opened by threads
-	return NULL;
+HANDLE openAccountsFile(LPTSTR path) {
+	// open the binary file for reading/writing shared
+	// error checking is done by the caller
+	return CreateFile(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 }
 
 // this function is called only by version A
 BOOL initThreadReal(LPPARAM param) {
 	// open the binary file for reading/writing
-	param->hAccounts = CreateFile(param->accountsFileName, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	param->hAccounts = openAccountsFile(param->accountsFileName);
 	// check the HANDLE value
 	if (param->hAccounts == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Cannot open accounts file %s. Error: %x\n"), param->accountsFileName, GetLastError());
@@ -250,12 +239,6 @@ BOOL initThreadReal(LPPARAM param) {
 	param->sync.h = param->hAccounts;
 
 	return TRUE;
-}
-
-HANDLE openAccountsFileReal(LPTSTR path) {
-	// open the binary file for reading/writing
-	// error checking is done by the caller
-	return CreateFile(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 }
 
 BOOL initThreadFake(LPPARAM param) {
@@ -294,9 +277,18 @@ BOOL releaseSyncB(HANDLE h, OVERLAPPED o) {
 	return UnlockFileEx(h, 0, recordSize.LowPart, recordSize.HighPart, &o);
 }
 
+// this function does not modify the file pointer
 BOOL displayRecords(HANDLE hFile) {
 	RECORD r;
 	DWORD nRead;
+
+	LARGE_INTEGER zero = { 0 };
+	LARGE_INTEGER savedFilePointer = { 0 };
+	SetFilePointerEx(hFile, zero, &savedFilePointer, FILE_CURRENT);
+
+	// go to the beginning of the file
+	SetFilePointerEx(hFile, zero, NULL, FILE_BEGIN);
+
 	while (ReadFile(hFile, &r, sizeof(r), &nRead, NULL) && nRead > 0) {
 		if (nRead != sizeof(r)) {
 			_ftprintf(stderr, _T("Record size mismatch!\n"));
@@ -304,5 +296,7 @@ BOOL displayRecords(HANDLE hFile) {
 		}
 		_tprintf(_T("%u %u %s %s %d\n"), r.id, r.account_number, r.surname, r.name, r.amount);
 	}
+	// restore the file pointer
+	SetFilePointerEx(hFile, savedFilePointer, NULL, FILE_BEGIN);
 	return TRUE;
 }
