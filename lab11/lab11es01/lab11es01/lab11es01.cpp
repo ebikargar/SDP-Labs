@@ -64,21 +64,21 @@ typedef struct _record {
 
 typedef RECORD* LPRECORD;
 
+typedef union _sync_obj {
+	HANDLE h;	// to a mutex / semaphore / file
+	CRITICAL_SECTION cs;
+} SYNC_OBJ;
+
+typedef SYNC_OBJ* LPSYNC_OBJ;
+
 typedef struct _param {
 	HANDLE hAccounts;
 	LPTSTR accountsFileName;
 	LPTSTR operationsFileName;
+	SYNC_OBJ sync;
 } PARAM;
 
 typedef PARAM* LPPARAM;
-
-typedef union _sync_obj {
-	HANDLE h;	// to a mutex / semaphore
-	CRITICAL_SECTION cs;
-	// or nothing
-} SYNC_OBJ;
-
-typedef SYNC_OBJ* LPSYNC_OBJ;
 
 BOOL initializeSyncA(LPSYNC_OBJ);
 BOOL initializeSyncB(LPSYNC_OBJ);
@@ -88,15 +88,17 @@ HANDLE openAccountsFileFake(LPTSTR);
 HANDLE openAccountsFileReal(LPTSTR);
 BOOL initThreadReal(LPPARAM);
 BOOL initThreadFake(LPPARAM);
-BOOL acquireSyncA(HANDLE, OVERLAPPED);
-BOOL acquireSyncB(HANDLE, OVERLAPPED);
-BOOL acquireSyncC(HANDLE, OVERLAPPED);
-BOOL acquireSyncD(HANDLE, OVERLAPPED);
-BOOL releaseSyncA(HANDLE, OVERLAPPED);
-BOOL releaseSyncB(HANDLE, OVERLAPPED);
-BOOL releaseSyncC(HANDLE, OVERLAPPED);
-BOOL releaseSyncD(HANDLE, OVERLAPPED);
+BOOL acquireSyncA(LPSYNC_OBJ, OVERLAPPED);
+BOOL acquireSyncB(LPSYNC_OBJ, OVERLAPPED);
+BOOL acquireSyncC(LPSYNC_OBJ, OVERLAPPED);
+BOOL acquireSyncD(LPSYNC_OBJ, OVERLAPPED);
+BOOL releaseSyncA(LPSYNC_OBJ, OVERLAPPED);
+BOOL releaseSyncB(LPSYNC_OBJ, OVERLAPPED);
+BOOL releaseSyncC(LPSYNC_OBJ, OVERLAPPED);
+BOOL releaseSyncD(LPSYNC_OBJ, OVERLAPPED);
 DWORD WINAPI doOperations(LPVOID);
+
+BOOL displayRecords(HANDLE hFile);
 
 
 INT _tmain(INT argc, LPTSTR argv[]) {
@@ -113,11 +115,6 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		return 1;
 	}
 
-	// versions different from A need to open the fileHandle accounts and initialize the sync object
-#if VERSION != 'A'
-	
-#endif // VERSION != 'A'
-
 	// initialize the syncronization mechanism
 	if (!initializeSync(&sync)) {
 		_ftprintf(stderr, _T("Error initializing the sync object\n"));
@@ -128,7 +125,8 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		_ftprintf(stderr, _T("Error opening the accounts file\n"));
 		return 3;
 	}
-	
+	_tprintf(_T("This is the content of the accounts file before processing the operations:\n"));
+	displayRecords(hAccounts);
 
 	nThreads = argc - 2;
 	params = (LPPARAM)malloc(nThreads * sizeof(PARAM));
@@ -146,6 +144,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		params[i].hAccounts = hAccounts;
 		params[i].accountsFileName = argv[1];
 		params[i].operationsFileName = argv[i + 2];
+		params[i].sync = sync;
 		tHandles[i] = CreateThread(NULL, 0, doOperations, &params[i], 0, NULL);
 		if (tHandles[i] == INVALID_HANDLE_VALUE) {
 			_ftprintf(stderr, _T("Error creating a thread\n"));
@@ -162,12 +161,19 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	for (i = 0; i < nThreads; i++) {
 		CloseHandle(tHandles[i]);
 	}
-
-	if (hAccounts) {
-		CloseHandle(hAccounts);
-	}
 	free(params);
 	free(tHandles);
+	// version A needs to open the file
+	if (!hAccounts) {
+		hAccounts = openAccountsFileReal(argv[1]);
+		if (hAccounts == INVALID_HANDLE_VALUE) {
+			_ftprintf(stderr, _T("Error reading the accounts file. Error: %x"), GetLastError());
+			return 5;
+		}
+	}
+	_tprintf(_T("This is the content of the accounts file after processing the operations:\n"));
+	displayRecords(hAccounts);
+	CloseHandle(hAccounts);
 	return 0;
 }
 
@@ -183,7 +189,7 @@ DWORD WINAPI doOperations(LPVOID p) {
 	hOperations = CreateFile(param->operationsFileName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	// check the HANDLE value
 	if (hOperations == INVALID_HANDLE_VALUE) {
-		_ftprintf(stderr, _T("Cannot open output file %s. Error: %x\n"), param->operationsFileName, GetLastError());
+		_ftprintf(stderr, _T("Cannot open operations file %s. Error: %x\n"), param->operationsFileName, GetLastError());
 		return 2;
 	}
 	while (ReadFile(hOperations, &operationRecord, sizeof(operationRecord), &nRead, NULL) && nRead > 0) {
@@ -204,7 +210,7 @@ DWORD WINAPI doOperations(LPVOID p) {
 		ov.OffsetHigh = FilePos.HighPart;
 
 		// require the sync object
-		acquireSyncA(param->hAccounts, ov);
+		acquireSync(&param->sync, ov);
 
 		// do stuff there
 		if (!ReadFile(param->hAccounts, &accountRecord, sizeof(accountRecord), &nRead, &ov) || nRead != sizeof(accountRecord)) {
@@ -220,7 +226,7 @@ DWORD WINAPI doOperations(LPVOID p) {
 			return 5;
 		}
 		// release
-		releaseSyncA(param->hAccounts, ov);
+		releaseSync(&param->sync, ov);
 	}
 	return 0;
 }
@@ -230,21 +236,26 @@ HANDLE openAccountsFileFake(LPTSTR) {
 	return NULL;
 }
 
+// this function is called only by version A
 BOOL initThreadReal(LPPARAM param) {
 	// open the binary file for reading/writing
 	param->hAccounts = CreateFile(param->accountsFileName, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	// check the HANDLE value
 	if (param->hAccounts == INVALID_HANDLE_VALUE) {
-		_ftprintf(stderr, _T("Cannot open output file %s. Error: %x\n"), param->accountsFileName, GetLastError());
+		_ftprintf(stderr, _T("Cannot open accounts file %s. Error: %x\n"), param->accountsFileName, GetLastError());
 		return FALSE;
 	}
+
+	// copy into the handle the file handle, required for locking/unlocking the file
+	param->sync.h = param->hAccounts;
+
 	return TRUE;
 }
 
 HANDLE openAccountsFileReal(LPTSTR path) {
 	// open the binary file for reading/writing
 	// error checking is done by the caller
-	return CreateFile(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	return CreateFile(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 }
 
 BOOL initThreadFake(LPPARAM param) {
@@ -257,30 +268,41 @@ BOOL initializeSyncA(LPSYNC_OBJ) {
 	// do nothing, syncronization is done by file locking, that needs no initialization
 	return TRUE;
 }
-BOOL acquireSyncA(HANDLE h, OVERLAPPED o) {
+BOOL acquireSyncA(LPSYNC_OBJ sync, OVERLAPPED o) {
 	LARGE_INTEGER recordSize;
 	recordSize.QuadPart = sizeof(RECORD);
-	return LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK, 0, recordSize.LowPart, recordSize.HighPart, &o);
+	return LockFileEx(sync->h, LOCKFILE_EXCLUSIVE_LOCK, 0, recordSize.LowPart, recordSize.HighPart, &o);
 }
-BOOL releaseSyncA(HANDLE h, OVERLAPPED o) {
+BOOL releaseSyncA(LPSYNC_OBJ sync, OVERLAPPED o) {
 	LARGE_INTEGER recordSize;
 	recordSize.QuadPart = sizeof(RECORD);
-	return UnlockFileEx(h, 0, recordSize.LowPart, recordSize.HighPart, &o);
+	return UnlockFileEx(sync->h, 0, recordSize.LowPart, recordSize.HighPart, &o);
 }
 
 BOOL initializeSyncB(LPSYNC_OBJ sync) {
 	InitializeCriticalSection(&sync->cs);
 	return TRUE;
 }
-
 BOOL acquireSyncB(HANDLE h, OVERLAPPED o) {
 	LARGE_INTEGER recordSize;
 	recordSize.QuadPart = sizeof(RECORD);
 	return LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK, 0, recordSize.LowPart, recordSize.HighPart, &o);
 }
-
 BOOL releaseSyncB(HANDLE h, OVERLAPPED o) {
 	LARGE_INTEGER recordSize;
 	recordSize.QuadPart = sizeof(RECORD);
 	return UnlockFileEx(h, 0, recordSize.LowPart, recordSize.HighPart, &o);
+}
+
+BOOL displayRecords(HANDLE hFile) {
+	RECORD r;
+	DWORD nRead;
+	while (ReadFile(hFile, &r, sizeof(r), &nRead, NULL) && nRead > 0) {
+		if (nRead != sizeof(r)) {
+			_ftprintf(stderr, _T("Record size mismatch!\n"));
+			return FALSE;
+		}
+		_tprintf(_T("%u %u %s %s %d\n"), r.id, r.account_number, r.surname, r.name, r.amount);
+	}
+	return TRUE;
 }
