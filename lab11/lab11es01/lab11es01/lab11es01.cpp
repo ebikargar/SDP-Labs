@@ -20,7 +20,7 @@ TODO description
 #include <stdio.h>
 #include <assert.h>
 
-#define VERSION 'A'
+#define VERSION 'D'
 
 #if VERSION == 'A'
 #define initializeSync initializeSyncA
@@ -94,14 +94,16 @@ BOOL releaseSyncD(LPSYNC_OBJ, OVERLAPPED);
 DWORD WINAPI doOperations(LPVOID);
 
 BOOL displayRecords(HANDLE hFile);
+VOID freeSync(LPSYNC_OBJ sync);
+VOID teardownThread(LPPARAM param);
 
 
 INT _tmain(INT argc, LPTSTR argv[]) {
 	HANDLE hAccounts = NULL;
 	DWORD nThreads;
-	LPPARAM params;
+	LPPARAM params = NULL;
 	SYNC_OBJ sync;	// depending on version, can be nothing, a handle (mutex or semaphore) or a critical section
-	LPHANDLE tHandles;
+	LPHANDLE tHandles = NULL;
 	DWORD i;
 
 	// check number of parameters
@@ -118,20 +120,25 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	hAccounts = openAccountsFile(argv[1]);
 	if (hAccounts == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Error opening the accounts file\n"));
+		freeSync(&sync);
 		return 3;
 	}
+	assert(hAccounts);
 	_tprintf(_T("This is the content of the accounts file before processing the operations:\n"));
-	displayRecords(hAccounts);
+	if (!displayRecords(hAccounts)) {
+		CloseHandle(hAccounts);
+		freeSync(&sync);
+		return 4;
+	}
 
 	nThreads = argc - 2;
-	params = (LPPARAM)malloc(nThreads * sizeof(PARAM));
-	tHandles = (LPHANDLE)malloc(nThreads * sizeof(HANDLE));
+	params = (LPPARAM)calloc(nThreads, sizeof(PARAM));
+	tHandles = (LPHANDLE)calloc(nThreads, sizeof(HANDLE));
 	if (params == NULL || tHandles == NULL) {
 		_ftprintf(stderr, _T("Error allocating some arrays for threads\n"));
-		if (hAccounts) {
-			CloseHandle(hAccounts);
-		}
-		return 3;
+		CloseHandle(hAccounts);
+		freeSync(&sync);
+		return 5;
 	}
 
 	// for each operation file, do the work
@@ -143,13 +150,13 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		tHandles[i] = CreateThread(NULL, 0, doOperations, &params[i], 0, NULL);
 		if (tHandles[i] == INVALID_HANDLE_VALUE) {
 			_ftprintf(stderr, _T("Error creating a thread\n"));
-			if (hAccounts) {
-				CloseHandle(hAccounts);
-			}
+			CloseHandle(hAccounts);
+			freeSync(&sync);
 			free(params);
 			free(tHandles);
-			return 4;
+			return 6;
 		}
+		assert(tHandles[i]);
 	}
 
 	WaitForMultipleObjects(nThreads, tHandles, TRUE, INFINITE);
@@ -158,6 +165,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 	free(params);
 	free(tHandles);
+	freeSync(&sync);
 
 	_tprintf(_T("This is the content of the accounts file after processing the operations:\n"));
 	displayRecords(hAccounts);
@@ -178,17 +186,19 @@ DWORD WINAPI doOperations(LPVOID p) {
 	// check the HANDLE value
 	if (hOperations == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Cannot open operations file %s. Error: %x\n"), param->operationsFileName, GetLastError());
-		return 2;
+		teardownThread(param);
+		return 1;
 	}
 	while (ReadFile(hOperations, &operationRecord, sizeof(operationRecord), &nRead, NULL) && nRead > 0) {
 		if (nRead != sizeof(operationRecord)) {
 			_ftprintf(stderr, _T("Record size mismatch on file %s!\n"), param->operationsFileName);
 			CloseHandle(hOperations);
-			return 3;
+			teardownThread(param);
+			return 2;
 		}
 		// create a "clean" OVERLAPPED structure
 		OVERLAPPED ov = { 0, 0, 0, 0, NULL };
-		// the index should be 0-based because at the beginning of the file the student with id = 1 is stored
+		// the index should be 0-based because at the beginning of the file the record with id = 1 is stored
 		LONGLONG n = operationRecord.id - 1;
 		LARGE_INTEGER FilePos;
 		// the displacement in the file is obtained by multiplying the index by the size of a single element
@@ -198,24 +208,34 @@ DWORD WINAPI doOperations(LPVOID p) {
 		ov.OffsetHigh = FilePos.HighPart;
 
 		// require the sync object
-		acquireSync(&param->sync, ov);
+		if (!acquireSync(&param->sync, ov)) {
+			CloseHandle(hOperations);
+			teardownThread(param);
+			return 3;
+		}
 
 		// do stuff there
 		if (!ReadFile(param->hAccounts, &accountRecord, sizeof(accountRecord), &nRead, &ov) || nRead != sizeof(accountRecord)) {
 			_ftprintf(stderr, _T("Error reading record\n"));
-			// TODO release resources
+			releaseSync(&param->sync, ov);
+			CloseHandle(hOperations);
+			teardownThread(param);
 			return 4;
 		}
 		_tprintf(_T("Account with id %u: amount: %d operation with amount: %d --> new amount: %d\n"), accountRecord.id, accountRecord.amount, operationRecord.amount, accountRecord.amount + operationRecord.amount);
 		accountRecord.amount += operationRecord.amount;
 		if (!WriteFile(param->hAccounts, &accountRecord, sizeof(accountRecord), &nRead, &ov) || nRead != sizeof(accountRecord)) {
 			_ftprintf(stderr, _T("Error writing record\n"));
-			// TODO release resources
+			releaseSync(&param->sync, ov);
+			CloseHandle(hOperations);
+			teardownThread(param);
 			return 5;
 		}
 		// release
 		releaseSync(&param->sync, ov);
 	}
+	CloseHandle(hOperations);
+	teardownThread(param);
 	return 0;
 }
 
@@ -263,7 +283,7 @@ BOOL releaseSyncA(LPSYNC_OBJ sync, OVERLAPPED o) {
 }
 
 BOOL initializeSyncB(LPSYNC_OBJ sync) {
-	sync->cs = (LPCRITICAL_SECTION)malloc(sizeof(CRITICAL_SECTION));
+	sync->cs = (LPCRITICAL_SECTION)calloc(1, sizeof(CRITICAL_SECTION));
 	InitializeCriticalSection(sync->cs);
 	return TRUE;
 }
@@ -325,6 +345,8 @@ BOOL displayRecords(HANDLE hFile) {
 	while (ReadFile(hFile, &r, sizeof(r), &nRead, NULL) && nRead > 0) {
 		if (nRead != sizeof(r)) {
 			_ftprintf(stderr, _T("Record size mismatch!\n"));
+			// restore the file pointer
+			SetFilePointerEx(hFile, savedFilePointer, NULL, FILE_BEGIN);
 			return FALSE;
 		}
 		_tprintf(_T("%u %u %s %s %d\n"), r.id, r.account_number, r.surname, r.name, r.amount);
@@ -332,4 +354,16 @@ BOOL displayRecords(HANDLE hFile) {
 	// restore the file pointer
 	SetFilePointerEx(hFile, savedFilePointer, NULL, FILE_BEGIN);
 	return TRUE;
+}
+
+VOID freeSync(LPSYNC_OBJ sync) {
+#if VERSION == 'C' || VERSION == 'D'
+	CloseHandle(sync->h);
+#endif // VERSION == 'C' || VERSION == 'D'
+}
+
+VOID teardownThread(LPPARAM param) {
+#if VERSION == 'A'
+	CloseHandle(param->hAccounts);
+#endif // VERSION == 'A'
 }
