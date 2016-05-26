@@ -1,7 +1,15 @@
 /*
-Lab 10 exercise 03
+Lab 11 exercise 01
 
-TODO description
+This program performs a multithread update of an accounts file,
+by updating the amounts stored in the records by considering some
+operations that are stored on other files. Each thread is
+responsible for an operations file. The accounts file is protected
+for concurrent access by using different techniques:
+- version A: file locking on the single record
+- version B: critical section (locking the access to the whole file)
+- version C: mutex (locking the access to the whole file)
+- version B: semaphore (locking the access to the whole file)
 
 @Author: Martino Mensio
 */
