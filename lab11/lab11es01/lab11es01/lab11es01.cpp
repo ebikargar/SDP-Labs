@@ -32,7 +32,7 @@ TODO description
 #define initializeSync initializeSyncB
 #define initThread initThreadFake
 #define acquireSync acquireSyncB
-#define releaseSync releaseSyncC
+#define releaseSync releaseSyncB
 #endif // VERSION == 'B'
 #if VERSION == 'C'
 #define initializeSync initializeSyncC
@@ -61,8 +61,8 @@ typedef struct _record {
 typedef RECORD* LPRECORD;
 
 typedef union _sync_obj {
-	HANDLE h;	// to a mutex / semaphore / file
-	CRITICAL_SECTION cs;
+	HANDLE h;	// to a mutex or semaphore (shared by threads) / file (different for each thread)
+	LPCRITICAL_SECTION cs; // shared by threads
 } SYNC_OBJ;
 
 typedef SYNC_OBJ* LPSYNC_OBJ;
@@ -71,7 +71,7 @@ typedef struct _param {
 	HANDLE hAccounts;
 	LPTSTR accountsFileName;
 	LPTSTR operationsFileName;
-	SYNC_OBJ sync;
+	SYNC_OBJ sync;	// this is copied, not passed by reference, so each thread can overwrite (version A overwrites h)
 } PARAM;
 
 typedef PARAM* LPPARAM;
@@ -206,7 +206,7 @@ DWORD WINAPI doOperations(LPVOID p) {
 			// TODO release resources
 			return 4;
 		}
-		_tprintf(_T("Account with id %u: amount: %d found operation with amount: %d\n"), accountRecord.id, accountRecord.amount, operationRecord.amount);
+		_tprintf(_T("Account with id %u: amount: %d operation with amount: %d --> new amount: %d\n"), accountRecord.id, accountRecord.amount, operationRecord.amount, accountRecord.amount + operationRecord.amount);
 		accountRecord.amount += operationRecord.amount;
 		if (!WriteFile(param->hAccounts, &accountRecord, sizeof(accountRecord), &nRead, &ov) || nRead != sizeof(accountRecord)) {
 			_ftprintf(stderr, _T("Error writing record\n"));
@@ -263,18 +263,51 @@ BOOL releaseSyncA(LPSYNC_OBJ sync, OVERLAPPED o) {
 }
 
 BOOL initializeSyncB(LPSYNC_OBJ sync) {
-	InitializeCriticalSection(&sync->cs);
+	sync->cs = (LPCRITICAL_SECTION)malloc(sizeof(CRITICAL_SECTION));
+	InitializeCriticalSection(sync->cs);
 	return TRUE;
 }
-BOOL acquireSyncB(HANDLE h, OVERLAPPED o) {
-	LARGE_INTEGER recordSize;
-	recordSize.QuadPart = sizeof(RECORD);
-	return LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK, 0, recordSize.LowPart, recordSize.HighPart, &o);
+BOOL acquireSyncB(LPSYNC_OBJ sync, OVERLAPPED o) {
+	EnterCriticalSection(sync->cs);
+	return TRUE;
 }
-BOOL releaseSyncB(HANDLE h, OVERLAPPED o) {
-	LARGE_INTEGER recordSize;
-	recordSize.QuadPart = sizeof(RECORD);
-	return UnlockFileEx(h, 0, recordSize.LowPart, recordSize.HighPart, &o);
+BOOL releaseSyncB(LPSYNC_OBJ sync, OVERLAPPED o) {
+	LeaveCriticalSection(sync->cs);
+	return TRUE;
+}
+
+BOOL initializeSyncC(LPSYNC_OBJ sync) {
+	sync->h = CreateMutex(NULL, FALSE, _T("Lab11es01_Mutex"));
+	if (sync->h == INVALID_HANDLE_VALUE) {
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL acquireSyncC(LPSYNC_OBJ sync, OVERLAPPED o) {
+	if (WaitForSingleObject(sync->h, INFINITE) == WAIT_FAILED) {
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL releaseSyncC(LPSYNC_OBJ sync, OVERLAPPED o) {
+	return ReleaseMutex(sync->h);
+}
+
+BOOL initializeSyncD(LPSYNC_OBJ sync) {
+	sync->h = CreateSemaphore(NULL, 1, 1, _T("Lab11es01_Semaphore"));
+	if (sync->h == INVALID_HANDLE_VALUE) {
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL acquireSyncD(LPSYNC_OBJ sync, OVERLAPPED o) {
+	if (WaitForSingleObject(sync->h, INFINITE) == WAIT_FAILED) {
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL releaseSyncD(LPSYNC_OBJ sync, OVERLAPPED o) {
+	return ReleaseSemaphore(sync->h, 1, NULL);
 }
 
 // this function does not modify the file pointer
