@@ -57,7 +57,6 @@ VOID writeBinary(LPTSTR filename) {
 	HANDLE hOut;
 	FILE *fInP;
 	DWORD nOut;
-	UINT num;
 	LPTSTR filename_bin;
 	RECORD record;
 	TCHAR line[LINE_MAX_LEN];
@@ -73,6 +72,11 @@ VOID writeBinary(LPTSTR filename) {
 
 	// allocate a string to store the output file name
 	filename_bin = (LPTSTR)malloc((_tcslen(filename) + _tcslen(EXTENSION_TO_APPEND) + 1) * sizeof(TCHAR));
+	if (filename_bin == NULL) {
+		_ftprintf(stderr, _T("Cannot allocate file name for file %s\n"), filename);
+		fclose(fInP);
+		return;
+	}
 
 	// copy the source name
 	_tcscpy(filename_bin, filename);
