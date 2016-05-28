@@ -19,7 +19,7 @@ not.
 #endif // !_CRT_SECURE_NO_WARNINGS
 
 // DEBUG set to 1 allows a verbose output
-#define DEBUG 1
+#define DEBUG 0
 
 #include <Windows.h>
 #include <tchar.h>
@@ -49,9 +49,9 @@ typedef READERPARAM* LPREADERPARAM;
 // structure that will be passed as parameter to the comparator thread
 typedef	struct _comparatorparam {
 	DWORD nReaders;
-	LPREADERPARAM params;
-	LPHANDLE comparatorSemaphore;
-	LPHANDLE readersSemaphore;
+	LPREADERPARAM params;			// the array of parameters (shared with the readers)
+	LPHANDLE comparatorSemaphore;	// a shortcut to the comparator semaphore
+	LPHANDLE readersSemaphore;		// a shortcut to the readers semaphore
 } COMPARATORPARAM;
 
 typedef COMPARATORPARAM* LPCOMPARATORPARAM;
@@ -95,11 +95,14 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	readersSemaphore = (LPHANDLE)malloc(nReaders * sizeof(HANDLE));
 	if (readersSemaphore == NULL) {
 		_ftprintf(stderr, _T("Error allocating the semaphores\n"));
+		free(readersHandles);
 		return 3;
 	}
 	readerParams = (LPREADERPARAM)malloc(nReaders * sizeof(READERPARAM));
 	if (readerParams == NULL) {
 		_ftprintf(stderr, _T("Error allocating params\n"));
+		free(readersHandles);
+		free(readersSemaphore);
 		return 4;
 	}
 
@@ -107,6 +110,9 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	comparatorSemaphore = CreateSemaphore(NULL, 0, nReaders, comparatorSemaphoreName);
 	if (comparatorSemaphore == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Error Creating the semaphores\n"));
+		free(readersHandles);
+		free(readersSemaphore);
+		free(readerParams);
 		return 5;
 	}
 
@@ -119,6 +125,10 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		if (readersSemaphore[i] == INVALID_HANDLE_VALUE) {
 			// on failure, terminate everything
 			_ftprintf(stderr, _T("Error Creating a semaphore\n"));
+			free(readersHandles);
+			free(readersSemaphore);
+			free(readerParams);
+			CloseHandle(comparatorSemaphore);
 			return 6;
 		}
 		// create the parameter
@@ -132,6 +142,10 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		if (readersHandles[i] == INVALID_HANDLE_VALUE) {
 			// on failure, terminate everything
 			_ftprintf(stderr, _T("Error creating reader thread\n"));
+			free(readersHandles);
+			free(readersSemaphore);
+			free(readerParams);
+			CloseHandle(comparatorSemaphore);
 			return 6;
 		}
 	}
@@ -145,6 +159,10 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	if (comparatorHandle == INVALID_HANDLE_VALUE) {
 		// on failure, terminate everything
 		_ftprintf(stderr, _T("Error creating comparator thread\n"));
+		free(readersHandles);
+		free(readersSemaphore);
+		free(readerParams);
+		CloseHandle(comparatorSemaphore);
 		return 7;
 	}
 	// wait the termination of the readers
@@ -163,7 +181,6 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	free(readerParams);
 	free(readersSemaphore);
 	return 0;
-
 }
 
 DWORD WINAPI readerThreadFunction(LPVOID param) {
@@ -177,11 +194,14 @@ DWORD WINAPI readerThreadFunction(LPVOID param) {
 	_tprintf(_T("reader: finished. Early termination: %d\n"), earlyTermination);
 #endif // DEBUG
 	if (!earlyTermination) {
+		// wait the last signal on the semaphore, to be sure that comparator is not still working on shared data
 		WaitForSingleObject(*readerParam->readerSemaphore, INFINITE);
 	}
 	// this reader finished
 	readerParam->done = 1;
+	// release the semaphore, so that the comparator can continue
 	ReleaseSemaphore(*readerParam->comparatorSemaphore, 1, NULL);
+	// terminate te thread
 	return 0;
 }
 
@@ -195,10 +215,11 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 	someContinue = TRUE;
 
 	while (!different && someContinue) {
+		// reset the flags
 		someContinue = someFinished = FALSE;
 		different = FALSE;
 		strToCompare = NULL;
-		// wait nReader times on comparator semaphore
+		// wait nReader times on comparator semaphore (one time for each reader)
 		for (i = 0; i < comparatorParam->nReaders; i++) {
 			WaitForSingleObject(*comparatorParam->comparatorSemaphore, INFINITE);
 		}
@@ -249,6 +270,7 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 		}
 	}
 	_tprintf(_T("Comparator result: the subtrees are %s\n"), different ? _T("different") : _T("equal"));
+	// terminate the thread
 	return 0;
 }
 
@@ -258,6 +280,7 @@ BOOL whatToDo(LPREADERPARAM param, LPTSTR entry) {
 #if DEBUG
 	_tprintf(_T("reader: entry: %s\n"), entry);
 #endif // DEBUG
+	// copy the entry in the shared structure
 	_tcsncpy(param->entry, entry, MAX_PATH);
 	// signal on the comparator semaphore
 	ReleaseSemaphore(*param->comparatorSemaphore, 1, NULL);
@@ -265,6 +288,7 @@ BOOL whatToDo(LPREADERPARAM param, LPTSTR entry) {
 #if DEBUG
 		_tprintf(_T("reader: they told me to terminate\n"));
 #endif // DEBUG
+		// false will break the recursion
 		return FALSE;
 	} else {
 		return TRUE;
@@ -293,6 +317,8 @@ BOOL visitDirectoryRAndDo(LPREADERPARAM param, LPTSTR path, DWORD level, BOOL(*t
 		// generate a new path by appending to path the name of the found entry
 		_sntprintf(newPath, MAX_PATH, _T("%s\\%s"), path, findFileData.cFileName);
 		if (!toDo(param, newPath)) {
+			// break the recursion
+			FindClose(hFind);
 			return FALSE;
 		}
 		// check the type of file
@@ -307,6 +333,8 @@ BOOL visitDirectoryRAndDo(LPREADERPARAM param, LPTSTR path, DWORD level, BOOL(*t
 			//_tprintf(_T("DIR %s\n"), path1);
 			// recursive call to the new paths
 			if (!visitDirectoryRAndDo(param, newPath, level + 1, toDo)) {
+				// break the recursion
+				FindClose(hFind);
 				return FALSE;
 			}
 		}
