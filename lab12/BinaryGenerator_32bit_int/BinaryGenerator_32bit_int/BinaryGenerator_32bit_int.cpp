@@ -48,7 +48,7 @@ INT writeBinary(LPTSTR filename) {
 	LONG num;
 	LPTSTR filename_bin;
 
-	// ope the text file for reading
+	// open the text file for reading
 	fInP = _tfopen(filename, _T("rt"));
 
 	// check if open was successful
