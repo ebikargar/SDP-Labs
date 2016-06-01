@@ -146,12 +146,16 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 			_ftprintf(stderr, _T("Record size mismatch\n"));
 			break;
 		}
-		producerSignal(&sync);
+		if (!producerSignal(&sync)) {
+			return 4;
+		}
 		/*
 		for (i = 0; i < 4; i++) {
 			ReleaseSemaphore(param[i].consumerSem, 1, NULL);
 		}*/
-		producerWait(&sync);
+		if (!producerWait(&sync)) {
+			return 5;
+		}
 		/*
 		for (i = 0; i < 4; i++) {
 			WaitForSingleObject(producerSem, INFINITE);
