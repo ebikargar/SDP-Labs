@@ -26,43 +26,79 @@ TODO description
 #define VERSION 'A'
 
 #if VERSION == 'A'
+#define SyncStruct SyncStructA
+#define initializeSyncStruct initializeSyncStructA
 #define producerWait producerWaitA
 #define producerSignal producerSignalA
 #define consumerWait consumerWaitA
 #define consumerSignal consumerSignalA
+#define DestroySyncStruct DestroySyncStructA
 #endif // VERSION == 'A'
 #if VERSION == 'B'
+#define SyncStruct SyncStructB
+#define initializeSyncStruct initializeSyncStructB
 #define producerWait producerWaitB
 #define producerSignal producerSignalB
 #define consumerWait consumerWaitB
 #define consumerSignal consumerSignalB
+#define DestroySyncStruct DestroySyncStructB
 #endif // VERSION == 'B'
 
 
 // Maximum number of digits in output
 #define MAXDIGITS 512
 
+typedef struct _SyncStructA {
+	HANDLE producerSem;			// producer waits 4 times on it, consumers do single signal on it
+	HANDLE consumerSems[4];		// each consumer waits on its own, signalled by producer
+} SyncStructA;
+
+typedef struct _SyncStructB {
+	HANDLE consumersEvent;		// consumers wait on it, MANUAL_RESET used with PulseEvent
+	HANDLE producerEvents[4];	// producer waits on all of them, AUTO_RESET used with SetEvent (like binary semaphores)
+} SyncStructB;
+
+typedef SyncStruct* LPSyncStruct;
+
 typedef struct _PARAM {
 	INT threadNumber;
 	LPLONG n;
 	LPBOOL done;
+	/*
 	HANDLE producerSem;
 	HANDLE consumerSem;
+	*/
+	LPSyncStruct sync;	// will be shared by all threads
 } PARAM, *LPPARAM;
 
 DWORD WINAPI consumer(LPVOID p);
 LPTSTR factorial(LONG n);
 INT multiply(INT x, INT res[], INT res_size);
 
+BOOL initializeSyncStructA(LPSyncStruct);
+BOOL producerWaitA(LPSyncStruct);
+BOOL producerSignalA(LPSyncStruct);
+BOOL consumerWaitA(LPSyncStruct, INT);
+BOOL consumerSignalA(LPSyncStruct, INT);
+BOOL DestroySyncStructA(LPSyncStruct);
+
+BOOL initializeSyncStructB(LPSyncStruct);
+BOOL producerWaitB(LPSyncStruct);
+BOOL producerSignalB(LPSyncStruct);
+BOOL consumerWaitB(LPSyncStruct, INT);
+BOOL consumerSignalB(LPSyncStruct, INT);
+BOOL DestroySyncStructB(LPSyncStruct);
+
 INT _tmain(INT argc, LPTSTR argv[]) {
 	HANDLE hIn;
 	HANDLE consumerThreads[4];
 	PARAM param[4];
-	HANDLE producerSem;
+	//HANDLE producerSem;
 	INT i;
 	LONG number;
 	BOOL done;
 	DWORD nRead;
+	SyncStruct sync;
 
 	// check number of parameters
 	if (argc != 2) {
@@ -76,18 +112,26 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		return 2;
 	}
 
+	if (!initializeSyncStruct(&sync)) {
+		return 3;
+	}
+	/*
 	producerSem = CreateSemaphore(NULL, 0, 4, NULL);
 	if (producerSem == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Impossible to create producer semaphore. Error: %x\n"), GetLastError());
 		return 3;
-	}
+	}*/
+
 	for (i = 0; i < 4; i++) {
+		/*
 		param[i].consumerSem = CreateSemaphore(NULL, 0, 1, NULL);
 		if (param[i].consumerSem == INVALID_HANDLE_VALUE) {
 			_ftprintf(stderr, _T("Impossible to create consumer semaphore. Error: %x\n"), GetLastError());
 			return 4;
 		}
 		param[i].producerSem = producerSem;
+		*/
+		param[i].sync = &sync;
 		param[i].threadNumber = i;
 		param[i].n = &number;
 		param[i].done = &done;
@@ -102,18 +146,26 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 			_ftprintf(stderr, _T("Record size mismatch\n"));
 			break;
 		}
+		producerSignal(&sync);
+		/*
 		for (i = 0; i < 4; i++) {
 			ReleaseSemaphore(param[i].consumerSem, 1, NULL);
-		}
+		}*/
+		producerWait(&sync);
+		/*
 		for (i = 0; i < 4; i++) {
 			WaitForSingleObject(producerSem, INFINITE);
-		}
+		}*/
 	}
 	done = TRUE;
+	producerSignal(&sync);
+	/*
 	for (i = 0; i < 4; i++) {
 		ReleaseSemaphore(param[i].consumerSem, 1, NULL);
-	}
+	}*/
 	WaitForMultipleObjects(4, consumerThreads, TRUE, INFINITE);
+
+	DestroySyncStruct(&sync);
 	return 0;
 }
 
@@ -128,7 +180,10 @@ DWORD WINAPI consumer(LPVOID p) {
 		accumulator = 1;
 	}
 	while(TRUE) {
-		WaitForSingleObject(param->consumerSem, INFINITE);
+		if (!consumerWait(param->sync, param->threadNumber)) {
+			return 1;
+		}
+		//WaitForSingleObject(param->consumerSem, INFINITE);
 		if (*param->done) {
 			break;
 		}
@@ -161,11 +216,74 @@ DWORD WINAPI consumer(LPVOID p) {
 			_ftprintf(stderr, _T("are you crazy?\n"));
 			break;
 		}
-
-		ReleaseSemaphore(param->producerSem, 1, NULL);
+		if (!consumerSignal(param->sync, param->threadNumber)) {
+			return 2;
+		}
+		//ReleaseSemaphore(param->producerSem, 1, NULL);
 	}
 	
 	return 0;
+}
+
+BOOL initializeSyncStructA(LPSyncStruct sync) {
+	INT i;
+	sync->producerSem = CreateSemaphore(NULL, 0, 4, NULL);
+	if (sync->producerSem == INVALID_HANDLE_VALUE) {
+		_ftprintf(stderr, _T("Impossible to create producer semaphore. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	for (i = 0; i < 4; i++) {
+		sync->consumerSems[i] = CreateSemaphore(NULL, 0, 1, NULL);
+		if (sync->consumerSems[i] == INVALID_HANDLE_VALUE) {
+			_ftprintf(stderr, _T("Impossible to create consumer semaphore. Error: %x\n"), GetLastError());
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+BOOL producerWaitA(LPSyncStruct sync) {
+	INT i;
+	for (i = 0; i < 4; i++) {
+		if (WaitForSingleObject(sync->producerSem, INFINITE) == WAIT_FAILED) {
+			_ftprintf(stderr, _T("Wait on producer semaphore failed. Error: %x\n"), GetLastError());
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+BOOL producerSignalA(LPSyncStruct sync) {
+	INT i;
+	for (i = 0; i < 4; i++) {
+		if (!ReleaseSemaphore(sync->consumerSems[i], 1, NULL)) {
+			_ftprintf(stderr, _T("Error releasing consumer semaphore. Error: %x\n"), GetLastError());
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+BOOL consumerWaitA(LPSyncStruct sync, INT threadNumber) {
+	if (WaitForSingleObject(sync->consumerSems[threadNumber], INFINITE) == WAIT_FAILED) {
+		_ftprintf(stderr, _T("Wait on consumer semaphore failed. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL consumerSignalA(LPSyncStruct sync, INT threadNumber) {
+	if (!ReleaseSemaphore(sync->producerSem, 1, NULL)) {
+		_ftprintf(stderr, _T("Error releasing producer semaphore. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL DestroySyncStructA(LPSyncStruct sync) {
+	INT i;
+	for (i = 0; i < 4; i++) {
+		assert(sync->consumerSems[i]);
+		CloseHandle(sync->consumerSems[i]);
+	}
+	assert(sync->producerSem);
+	CloseHandle(sync->producerSem);
+	return TRUE;
 }
 
 // This function finds factorial of large numbers and prints them
