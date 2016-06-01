@@ -1,0 +1,138 @@
+System and Device Programming
+Laboratory number 12 (05 part II)
+
+
+
+Note
+----
+
+All students are requested to *up-load* on the class "portal" web page
+the solution of Exercise 01 and 02.
+Up-load the source code, i.e., the ".cpp" file (in tar-gzipped format,
+if necessary), with explanatory comments on top of the program
+(if necessary).
+Please, follow the course rules to deliver the laboratory solution.
+
+
+
+Laboratory target
+-----------------
+
+- Synchronizing threads with semaphores and events
+- Error handling
+- Concurrent programming with processes and synchronization
+  through file locking
+
+
+
+Exercise 01 (versions A and B)
+------------------------------
+
+Implement the following version of the producer-consumer scheme.
+A concurrent program runs 4 working threads.
+Each thread iterates through a cycle waiting for 32-bit integer
+values:
+- the first thread computes the sum of all values and for each new
+  value it prints-out (on standard output) the partial sum of the
+  numbers received until that moment
+- the second thread computes and prints-out (on standard output)
+  the partial product of the numbers
+- the third thread computes and prints-out (on standard output)
+  the factorial of the current number
+- the fourth thread prints-out (on standard output) a number
+  of '#' characters equal to the value on the same line of the
+  standard output.
+
+The four threads have to synchronize with a main thread which is in
+charge of reading all integer numbers from a file.
+The file name is received on the command line and it stores a variable
+length sequence of integer 32-bit numbers.
+When the file ends the main thread has to terminate all four working
+threads and it has to stop.
+
+In this producer-and-consumer scheme think about the differences
+between semaphores (or mutexes or critical sections) and Windows
+events.
+How would you implement:
+- A version of the program using semaphores.
+- A version of the program using Windows-32 events.
+
+
+Suggestions/Comments
+--------------------
+- Notice that the 4 secondary threads have to wait numbers coming
+  from the main thread, but the main thread has to wait those
+  threads to do their job before reading the next value from
+  file.
+- In the semaphore version, are 2 semaphores sufficient to synchronize
+  all threads in a proper way?
+- In the event version which are the limitations?
+
+
+
+Exercise 02
+-----------
+
+A file contains a sequence of 32-bit values in binary form.
+A program receives a file name on the command line and runs
+two threads:
+
+* The first thread:
+  - Reads from the file pairs of value n1, n2
+  - Computes their ratios n1/n2
+  - Prints-out on standard output n1, n2 and n1/n2
+
+  The thread has to handle exceptions for:
+  - Trying to opening a non-existing file, file handle exception
+  - Performing a division by zero, mathematical exception
+  - Reading file with an odd number of value (the n2 value for
+    the last pair does not exist)
+
+* The second thread
+  - Considers the first integer stored in the file as an array size
+  - Dynamically allocates an array of that size
+  - Stores all subsequent values within the file into the array
+  - Orders the array and prints it out on standard output.
+
+  The thread has to handle exceptions for:
+  - Wrong (array) memory allocation
+  - Wrong memory access, during array element read or write
+  - Reading a number of values from file larger than the array
+    size, i.e., array bound exception.
+
+Notice that when one thread handles an exception it has to force
+to a clean termination the other thread, i.e., memory has to be
+free (no memory leaks), files have to be closed, etc.
+
+
+
+Exercise 03
+-----------
+
+Write a client-server application, based on two *processes*
+which communicate using an intermediate file.
+
+Process A (the client) works as follow:
+- It opens a temporary file for writing (use GetTempFileName to
+  obtain a unique file name).
+- It starts Process B passing as argument the name of the file.
+- It reads from standard input strings of characters, and it writes
+  those strings on the intermediate file.
+  Use string of constant length (e.g., #define MAX_LEN 100).
+- It stops reading strings from standard input when it receives an
+  end-of-file (ctrl-Z).
+- Before terminating, it writes the string
+  ".end"
+  as last line of the file.
+
+Process B (the server) works as follows:
+- It opens the intermediate file for reading.
+- It reads lines as soon as they are available, and it prints them
+  out on standard output.
+
+Suggestions:
+- Process A keeps the file open, and it always locks the next part of
+  the file before unlocking the previous part.
+- Process B runs in parallel, and it reads a shared file, waiting to
+  have access to single lines to read them.
+
