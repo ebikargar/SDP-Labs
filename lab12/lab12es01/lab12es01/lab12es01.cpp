@@ -23,7 +23,7 @@ TODO description
 #include <assert.h>
 
 
-#define VERSION 'A'
+#define VERSION 'C'
 
 #if VERSION == 'A'
 #define SyncStruct SyncStructA
@@ -43,6 +43,15 @@ TODO description
 #define consumerSignal consumerSignalB
 #define DestroySyncStruct DestroySyncStructB
 #endif // VERSION == 'B'
+#if VERSION == 'C'
+#define SyncStruct SyncStructC
+#define initializeSyncStruct initializeSyncStructC
+#define producerWait producerWaitC
+#define producerSignal producerSignalC
+#define consumerWait consumerWaitC
+#define consumerSignal consumerSignalC
+#define DestroySyncStruct DestroySyncStructC
+#endif // VERSION == 'C'
 
 
 // Maximum number of digits in output
@@ -54,9 +63,43 @@ typedef struct _SyncStructA {
 } SyncStructA;
 
 typedef struct _SyncStructB {
-	HANDLE consumersEvent;		// consumers wait on it, MANUAL_RESET used with PulseEvent
+	HANDLE consumerEvents[4];
 	HANDLE producerEvents[4];	// producer waits on all of them, AUTO_RESET used with SetEvent (like binary semaphores)
+	// maybe use semaphores at this point?
+	/*
+		Cannot use a single event that every customer waits on it, because MANUAL_RESET events used with PulseEvent
+		are not reliable. When calling the PulseEvent, only the thread that are currently waiting for the event can
+		go on, but there is no way of being sure that every consumer is already waiting. If some consumers are not
+		yet waiting on the event, it won't be able to go on when it starts waiting, also because the producer will
+		be waiting for it on his own event/semaphore.
+		Doing it with a MANUAL_RESET together with a SetEvent is risky because some fast consumer can iterate more
+		times while the event is signalled. To fix that, it is possible to use a 2-barriers mechanism in which the
+		last thread of each barrier resets the event.
+	*/
 } SyncStructB;
+
+
+/*
+	consumers flow:
+	+-----------------------+---------------------------------+-------------+
+	                        |                                 |
+	    prelude room     door 1     room 1 (work there)     door 2     out
+	                        |                                 |
+	+-----------------------+---------------------------------+-------------+
+
+	Door 1 is opened by the producer, to allow consumer to enter room 1 and do their job with the data.
+	Door 1 is closed by the last producer passing through it.
+	Door 2 is opened by the last producer entering room 1 (the one that has already closed door 1).
+	Door 2 is closed by the last producer going out.
+*/
+typedef struct _SyncStructC {
+	CRITICAL_SECTION cs;
+	HANDLE consumersFirstDoor;
+	HANDLE consumersSecondDoor;
+	HANDLE producerDoor;
+	volatile INT threadInFirstRoom;
+	volatile INT threadInSecondRoom;
+} SyncStructC;
 
 typedef SyncStruct* LPSyncStruct;
 
@@ -88,6 +131,13 @@ BOOL producerSignalB(LPSyncStruct);
 BOOL consumerWaitB(LPSyncStruct, INT);
 BOOL consumerSignalB(LPSyncStruct, INT);
 BOOL DestroySyncStructB(LPSyncStruct);
+
+BOOL initializeSyncStructC(LPSyncStruct);
+BOOL producerWaitC(LPSyncStruct);
+BOOL producerSignalC(LPSyncStruct);
+BOOL consumerWaitC(LPSyncStruct, INT);
+BOOL consumerSignalC(LPSyncStruct, INT);
+BOOL DestroySyncStructC(LPSyncStruct);
 
 INT _tmain(INT argc, LPTSTR argv[]) {
 	HANDLE hIn;
@@ -229,6 +279,7 @@ DWORD WINAPI consumer(LPVOID p) {
 	return 0;
 }
 
+#if VERSION == 'A'
 BOOL initializeSyncStructA(LPSyncStruct sync) {
 	INT i;
 	sync->producerSem = CreateSemaphore(NULL, 0, 4, NULL);
@@ -289,6 +340,173 @@ BOOL DestroySyncStructA(LPSyncStruct sync) {
 	CloseHandle(sync->producerSem);
 	return TRUE;
 }
+#endif // VERSION == 'A'
+
+#if VERSION == 'B'
+BOOL initializeSyncStructB(LPSyncStruct sync) {
+	INT i;
+	/*
+	sync->consumersEvent = CreateEvent(NULL, TRUE, TRUE, NULL);	// TODO probably the initial state sucks
+	if (sync->consumersEvent == INVALID_HANDLE_VALUE) {
+		_ftprintf(stderr, _T("Impossible to create producer semaphore. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	*/
+	for (i = 0; i < 4; i++) {
+		sync->consumerEvents[i] = CreateEvent(NULL, FALSE, FALSE, NULL);	// TODO probably the initial state sucks
+		if (sync->consumerEvents[i] == INVALID_HANDLE_VALUE) {
+			_ftprintf(stderr, _T("Impossible to create producer semaphore. Error: %x\n"), GetLastError());
+			return FALSE;
+		}
+		sync->producerEvents[i] = CreateEvent(NULL, FALSE, FALSE, NULL);
+		if (sync->producerEvents[i] == INVALID_HANDLE_VALUE) {
+			_ftprintf(stderr, _T("Impossible to create consumer semaphore. Error: %x\n"), GetLastError());
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+BOOL producerWaitB(LPSyncStruct sync) {
+	if (WaitForMultipleObjects(4, sync->producerEvents, TRUE, INFINITE) == WAIT_FAILED) {
+		_ftprintf(stderr, _T("Wait on producer events failed. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL producerSignalB(LPSyncStruct sync) {
+	INT i;
+	/*
+	if (!PulseEvent(sync->consumersEvent)) {
+		_ftprintf(stderr, _T("Error pulsing consumer event. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	*/
+	for (i = 0; i < 4; i++) {
+		if (!SetEvent(sync->consumerEvents[i])) {
+			_ftprintf(stderr, _T("Error setting consumer event. Error: %x\n"), GetLastError());
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+BOOL consumerWaitB(LPSyncStruct sync, INT threadNumber) {
+	if (WaitForSingleObject(sync->consumerEvents[threadNumber], INFINITE) == WAIT_FAILED) {
+		_ftprintf(stderr, _T("Wait on consumer event failed. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL consumerSignalB(LPSyncStruct sync, INT threadNumber) {
+	if (!SetEvent(sync->producerEvents[threadNumber])) {
+		_ftprintf(stderr, _T("Error setting producer event. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL DestroySyncStructB(LPSyncStruct sync) {
+	INT i;
+	for (i = 0; i < 4; i++) {
+		assert(sync->producerEvents[i]);
+		CloseHandle(sync->producerEvents[i]);
+		assert(sync->consumerEvents[i]);
+		CloseHandle(sync->consumerEvents[i]);
+	}
+	/*
+	assert(sync->consumersEvent);
+	CloseHandle(sync->consumersEvent);
+	*/
+	return TRUE;
+}
+#endif // VERSION == 'B'
+
+#if VERSION == 'C'
+BOOL initializeSyncStructC(LPSyncStruct sync) {
+	InitializeCriticalSection(&sync->cs);
+	sync->consumersFirstDoor = CreateEvent(NULL, TRUE, FALSE, NULL);
+	if (sync->consumersFirstDoor == INVALID_HANDLE_VALUE) {
+		_ftprintf(stderr, _T("Impossible to create consumersFirstDoor event. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	sync->consumersSecondDoor = CreateEvent(NULL, TRUE, FALSE, NULL);
+	if (sync->consumersSecondDoor == INVALID_HANDLE_VALUE) {
+		_ftprintf(stderr, _T("Impossible to create consumersSecondDoor event. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	sync->producerDoor = CreateEvent(NULL, FALSE, FALSE, NULL);
+	if (sync->producerDoor == INVALID_HANDLE_VALUE) {
+		_ftprintf(stderr, _T("Impossible to create producerDoor event. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	sync->threadInFirstRoom = 0;
+	sync->threadInSecondRoom = 0;
+	
+	return TRUE;
+}
+BOOL producerWaitC(LPSyncStruct sync) {
+	if (WaitForSingleObject(sync->producerDoor, INFINITE) == WAIT_FAILED) {
+		_ftprintf(stderr, _T("Wait on producerDoor failed. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL producerSignalC(LPSyncStruct sync) {
+	if (!SetEvent(sync->consumersFirstDoor)) {
+		_ftprintf(stderr, _T("Impossible to open the consumersFirstDoor. Error: %x"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL consumerWaitC(LPSyncStruct sync, INT threadNumber) {
+	BOOL iAmTheLastToPassFirstDoor;
+	if (WaitForSingleObject(sync->consumersFirstDoor, INFINITE) == WAIT_FAILED) {
+		_ftprintf(stderr, _T("Wait on consumersFirstDoor failed. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	EnterCriticalSection(&sync->cs);
+	iAmTheLastToPassFirstDoor = (++sync->threadInFirstRoom == 4);
+	LeaveCriticalSection(&sync->cs);
+	if (iAmTheLastToPassFirstDoor) {
+		// i am the last, i must close the door and can open the second door (positioned after the job to be done)
+		sync->threadInFirstRoom = 0;
+		ResetEvent(sync->consumersFirstDoor);
+		// now the thread that have done their job can go through the second door
+		SetEvent(sync->consumersSecondDoor);
+	}
+	return TRUE;
+}
+BOOL consumerSignalC(LPSyncStruct sync, INT threadNumber) {
+	BOOL iAmTheLastToPassSecondDoor;
+	if (WaitForSingleObject(sync->consumersSecondDoor, INFINITE) == WAIT_FAILED) {
+		_ftprintf(stderr, _T("Wait on consumersSecondDoor failed. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	EnterCriticalSection(&sync->cs);
+	iAmTheLastToPassSecondDoor = (++sync->threadInSecondRoom == 4);
+	LeaveCriticalSection(&sync->cs);
+	if (iAmTheLastToPassSecondDoor) {
+		// i am the last, i must close the second door and can set the producer event
+		sync->threadInSecondRoom = 0;
+		ResetEvent(sync->consumersSecondDoor);
+		// now the thread that have done their job can go through the second door
+		SetEvent(sync->producerDoor);
+	}
+	return TRUE;
+}
+BOOL DestroySyncStructC(LPSyncStruct sync) {
+	assert(sync->consumersFirstDoor);
+	CloseHandle(sync->consumersFirstDoor);
+	assert(sync->consumersSecondDoor);
+	CloseHandle(sync->consumersSecondDoor);
+	assert(sync->producerDoor);
+	CloseHandle(sync->producerDoor);
+	DeleteCriticalSection(&sync->cs);
+	/*
+	assert(sync->consumersEvent);
+	CloseHandle(sync->consumersEvent);
+	*/
+	return TRUE;
+}
+#endif // VERSION == 'C'
 
 // This function finds factorial of large numbers and prints them
 LPTSTR factorial(LONG n) {
