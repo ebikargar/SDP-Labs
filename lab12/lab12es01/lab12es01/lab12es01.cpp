@@ -6,6 +6,9 @@ TODO description
 @Author: Martino Mensio
 */
 
+// change there for choosing the version
+#define VERSION 'C'
+
 // http://www.geeksforgeeks.org/factorial-large-number/
 
 #ifndef UNICODE
@@ -22,35 +25,14 @@ TODO description
 #include <stdio.h>
 #include <assert.h>
 
-
-#define VERSION 'C'
-
 #if VERSION == 'A'
 #define SyncStruct SyncStructA
-#define initializeSyncStruct initializeSyncStructA
-#define producerWait producerWaitA
-#define producerSignal producerSignalA
-#define consumerWait consumerWaitA
-#define consumerSignal consumerSignalA
-#define DestroySyncStruct DestroySyncStructA
 #endif // VERSION == 'A'
 #if VERSION == 'B'
 #define SyncStruct SyncStructB
-#define initializeSyncStruct initializeSyncStructB
-#define producerWait producerWaitB
-#define producerSignal producerSignalB
-#define consumerWait consumerWaitB
-#define consumerSignal consumerSignalB
-#define DestroySyncStruct DestroySyncStructB
 #endif // VERSION == 'B'
 #if VERSION == 'C'
 #define SyncStruct SyncStructC
-#define initializeSyncStruct initializeSyncStructC
-#define producerWait producerWaitC
-#define producerSignal producerSignalC
-#define consumerWait consumerWaitC
-#define consumerSignal consumerSignalC
-#define DestroySyncStruct DestroySyncStructC
 #endif // VERSION == 'C'
 
 
@@ -74,7 +56,7 @@ typedef struct _SyncStructB {
 		be waiting for it on his own event/semaphore.
 		Doing it with a MANUAL_RESET together with a SetEvent is risky because some fast consumer can iterate more
 		times while the event is signalled. To fix that, it is possible to use a 2-barriers mechanism in which the
-		last thread of each barrier resets the event.
+		last thread of each barrier resets the event (see version C).
 	*/
 } SyncStructB;
 
@@ -93,10 +75,10 @@ typedef struct _SyncStructB {
 	Door 2 is closed by the last producer going out.
 */
 typedef struct _SyncStructC {
-	CRITICAL_SECTION cs;
-	HANDLE consumersFirstDoor;
-	HANDLE consumersSecondDoor;
-	HANDLE producerDoor;
+	CRITICAL_SECTION cs;		// to protect the number of threads in rooms
+	HANDLE consumersFirstDoor;	// MANUAL_RESET
+	HANDLE consumersSecondDoor; // MANUAL_RESET
+	HANDLE producerDoor;		// AUTO_RESET
 	volatile INT threadInFirstRoom;
 	volatile INT threadInSecondRoom;
 } SyncStructC;
@@ -107,10 +89,6 @@ typedef struct _PARAM {
 	INT threadNumber;
 	LPLONG n;
 	LPBOOL done;
-	/*
-	HANDLE producerSem;
-	HANDLE consumerSem;
-	*/
 	LPSyncStruct sync;	// will be shared by all threads
 } PARAM, *LPPARAM;
 
@@ -118,32 +96,17 @@ DWORD WINAPI consumer(LPVOID p);
 LPTSTR factorial(LONG n);
 INT multiply(INT x, INT res[], INT res_size);
 
-BOOL initializeSyncStructA(LPSyncStruct);
-BOOL producerWaitA(LPSyncStruct);
-BOOL producerSignalA(LPSyncStruct);
-BOOL consumerWaitA(LPSyncStruct, INT);
-BOOL consumerSignalA(LPSyncStruct, INT);
-BOOL DestroySyncStructA(LPSyncStruct);
-
-BOOL initializeSyncStructB(LPSyncStruct);
-BOOL producerWaitB(LPSyncStruct);
-BOOL producerSignalB(LPSyncStruct);
-BOOL consumerWaitB(LPSyncStruct, INT);
-BOOL consumerSignalB(LPSyncStruct, INT);
-BOOL DestroySyncStructB(LPSyncStruct);
-
-BOOL initializeSyncStructC(LPSyncStruct);
-BOOL producerWaitC(LPSyncStruct);
-BOOL producerSignalC(LPSyncStruct);
-BOOL consumerWaitC(LPSyncStruct, INT);
-BOOL consumerSignalC(LPSyncStruct, INT);
-BOOL DestroySyncStructC(LPSyncStruct);
+BOOL initializeSyncStruct(LPSyncStruct);
+BOOL producerWait(LPSyncStruct);
+BOOL producerSignal(LPSyncStruct);
+BOOL consumerWait(LPSyncStruct, INT);
+BOOL consumerSignal(LPSyncStruct, INT);
+BOOL DestroySyncStruct(LPSyncStruct);
 
 INT _tmain(INT argc, LPTSTR argv[]) {
 	HANDLE hIn;
 	HANDLE consumerThreads[4];
 	PARAM param[4];
-	//HANDLE producerSem;
 	INT i;
 	LONG number;
 	BOOL done;
@@ -165,22 +128,8 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	if (!initializeSyncStruct(&sync)) {
 		return 3;
 	}
-	/*
-	producerSem = CreateSemaphore(NULL, 0, 4, NULL);
-	if (producerSem == INVALID_HANDLE_VALUE) {
-		_ftprintf(stderr, _T("Impossible to create producer semaphore. Error: %x\n"), GetLastError());
-		return 3;
-	}*/
 
 	for (i = 0; i < 4; i++) {
-		/*
-		param[i].consumerSem = CreateSemaphore(NULL, 0, 1, NULL);
-		if (param[i].consumerSem == INVALID_HANDLE_VALUE) {
-			_ftprintf(stderr, _T("Impossible to create consumer semaphore. Error: %x\n"), GetLastError());
-			return 4;
-		}
-		param[i].producerSem = producerSem;
-		*/
 		param[i].sync = &sync;
 		param[i].threadNumber = i;
 		param[i].n = &number;
@@ -199,24 +148,15 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		if (!producerSignal(&sync)) {
 			return 4;
 		}
-		/*
-		for (i = 0; i < 4; i++) {
-			ReleaseSemaphore(param[i].consumerSem, 1, NULL);
-		}*/
 		if (!producerWait(&sync)) {
 			return 5;
 		}
-		/*
-		for (i = 0; i < 4; i++) {
-			WaitForSingleObject(producerSem, INFINITE);
-		}*/
 	}
 	done = TRUE;
-	producerSignal(&sync);
-	/*
-	for (i = 0; i < 4; i++) {
-		ReleaseSemaphore(param[i].consumerSem, 1, NULL);
-	}*/
+	if (!producerSignal(&sync)) {
+		return 6;
+	}
+	
 	WaitForMultipleObjects(4, consumerThreads, TRUE, INFINITE);
 
 	DestroySyncStruct(&sync);
@@ -237,7 +177,6 @@ DWORD WINAPI consumer(LPVOID p) {
 		if (!consumerWait(param->sync, param->threadNumber)) {
 			return 1;
 		}
-		//WaitForSingleObject(param->consumerSem, INFINITE);
 		if (*param->done) {
 			break;
 		}
@@ -273,14 +212,15 @@ DWORD WINAPI consumer(LPVOID p) {
 		if (!consumerSignal(param->sync, param->threadNumber)) {
 			return 2;
 		}
-		//ReleaseSemaphore(param->producerSem, 1, NULL);
 	}
 	
 	return 0;
 }
 
+
+
 #if VERSION == 'A'
-BOOL initializeSyncStructA(LPSyncStruct sync) {
+BOOL initializeSyncStruct(LPSyncStruct sync) {
 	INT i;
 	sync->producerSem = CreateSemaphore(NULL, 0, 4, NULL);
 	if (sync->producerSem == INVALID_HANDLE_VALUE) {
@@ -296,7 +236,7 @@ BOOL initializeSyncStructA(LPSyncStruct sync) {
 	}
 	return TRUE;
 }
-BOOL producerWaitA(LPSyncStruct sync) {
+BOOL producerWait(LPSyncStruct sync) {
 	INT i;
 	for (i = 0; i < 4; i++) {
 		if (WaitForSingleObject(sync->producerSem, INFINITE) == WAIT_FAILED) {
@@ -306,7 +246,7 @@ BOOL producerWaitA(LPSyncStruct sync) {
 	}
 	return TRUE;
 }
-BOOL producerSignalA(LPSyncStruct sync) {
+BOOL producerSignal(LPSyncStruct sync) {
 	INT i;
 	for (i = 0; i < 4; i++) {
 		if (!ReleaseSemaphore(sync->consumerSems[i], 1, NULL)) {
@@ -316,21 +256,21 @@ BOOL producerSignalA(LPSyncStruct sync) {
 	}
 	return TRUE;
 }
-BOOL consumerWaitA(LPSyncStruct sync, INT threadNumber) {
+BOOL consumerWait(LPSyncStruct sync, INT threadNumber) {
 	if (WaitForSingleObject(sync->consumerSems[threadNumber], INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Wait on consumer semaphore failed. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
 	return TRUE;
 }
-BOOL consumerSignalA(LPSyncStruct sync, INT threadNumber) {
+BOOL consumerSignal(LPSyncStruct sync, INT threadNumber) {
 	if (!ReleaseSemaphore(sync->producerSem, 1, NULL)) {
 		_ftprintf(stderr, _T("Error releasing producer semaphore. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
 	return TRUE;
 }
-BOOL DestroySyncStructA(LPSyncStruct sync) {
+BOOL DestroySyncStruct(LPSyncStruct sync) {
 	INT i;
 	for (i = 0; i < 4; i++) {
 		assert(sync->consumerSems[i]);
@@ -342,8 +282,10 @@ BOOL DestroySyncStructA(LPSyncStruct sync) {
 }
 #endif // VERSION == 'A'
 
+
+
 #if VERSION == 'B'
-BOOL initializeSyncStructB(LPSyncStruct sync) {
+BOOL initializeSyncStruct(LPSyncStruct sync) {
 	INT i;
 	/*
 	sync->consumersEvent = CreateEvent(NULL, TRUE, TRUE, NULL);	// TODO probably the initial state sucks
@@ -366,14 +308,14 @@ BOOL initializeSyncStructB(LPSyncStruct sync) {
 	}
 	return TRUE;
 }
-BOOL producerWaitB(LPSyncStruct sync) {
+BOOL producerWait(LPSyncStruct sync) {
 	if (WaitForMultipleObjects(4, sync->producerEvents, TRUE, INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Wait on producer events failed. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
 	return TRUE;
 }
-BOOL producerSignalB(LPSyncStruct sync) {
+BOOL producerSignal(LPSyncStruct sync) {
 	INT i;
 	/*
 	if (!PulseEvent(sync->consumersEvent)) {
@@ -389,21 +331,21 @@ BOOL producerSignalB(LPSyncStruct sync) {
 	}
 	return TRUE;
 }
-BOOL consumerWaitB(LPSyncStruct sync, INT threadNumber) {
+BOOL consumerWait(LPSyncStruct sync, INT threadNumber) {
 	if (WaitForSingleObject(sync->consumerEvents[threadNumber], INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Wait on consumer event failed. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
 	return TRUE;
 }
-BOOL consumerSignalB(LPSyncStruct sync, INT threadNumber) {
+BOOL consumerSignal(LPSyncStruct sync, INT threadNumber) {
 	if (!SetEvent(sync->producerEvents[threadNumber])) {
 		_ftprintf(stderr, _T("Error setting producer event. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
 	return TRUE;
 }
-BOOL DestroySyncStructB(LPSyncStruct sync) {
+BOOL DestroySyncStruct(LPSyncStruct sync) {
 	INT i;
 	for (i = 0; i < 4; i++) {
 		assert(sync->producerEvents[i]);
@@ -419,8 +361,10 @@ BOOL DestroySyncStructB(LPSyncStruct sync) {
 }
 #endif // VERSION == 'B'
 
+
+
 #if VERSION == 'C'
-BOOL initializeSyncStructC(LPSyncStruct sync) {
+BOOL initializeSyncStruct(LPSyncStruct sync) {
 	InitializeCriticalSection(&sync->cs);
 	sync->consumersFirstDoor = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (sync->consumersFirstDoor == INVALID_HANDLE_VALUE) {
@@ -442,21 +386,21 @@ BOOL initializeSyncStructC(LPSyncStruct sync) {
 	
 	return TRUE;
 }
-BOOL producerWaitC(LPSyncStruct sync) {
+BOOL producerWait(LPSyncStruct sync) {
 	if (WaitForSingleObject(sync->producerDoor, INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Wait on producerDoor failed. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
 	return TRUE;
 }
-BOOL producerSignalC(LPSyncStruct sync) {
+BOOL producerSignal(LPSyncStruct sync) {
 	if (!SetEvent(sync->consumersFirstDoor)) {
 		_ftprintf(stderr, _T("Impossible to open the consumersFirstDoor. Error: %x"), GetLastError());
 		return FALSE;
 	}
 	return TRUE;
 }
-BOOL consumerWaitC(LPSyncStruct sync, INT threadNumber) {
+BOOL consumerWait(LPSyncStruct sync, INT threadNumber) {
 	BOOL iAmTheLastToPassFirstDoor;
 	if (WaitForSingleObject(sync->consumersFirstDoor, INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Wait on consumersFirstDoor failed. Error: %x\n"), GetLastError());
@@ -474,7 +418,7 @@ BOOL consumerWaitC(LPSyncStruct sync, INT threadNumber) {
 	}
 	return TRUE;
 }
-BOOL consumerSignalC(LPSyncStruct sync, INT threadNumber) {
+BOOL consumerSignal(LPSyncStruct sync, INT threadNumber) {
 	BOOL iAmTheLastToPassSecondDoor;
 	if (WaitForSingleObject(sync->consumersSecondDoor, INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Wait on consumersSecondDoor failed. Error: %x\n"), GetLastError());
@@ -492,7 +436,7 @@ BOOL consumerSignalC(LPSyncStruct sync, INT threadNumber) {
 	}
 	return TRUE;
 }
-BOOL DestroySyncStructC(LPSyncStruct sync) {
+BOOL DestroySyncStruct(LPSyncStruct sync) {
 	assert(sync->consumersFirstDoor);
 	CloseHandle(sync->consumersFirstDoor);
 	assert(sync->consumersSecondDoor);
@@ -507,6 +451,8 @@ BOOL DestroySyncStructC(LPSyncStruct sync) {
 	return TRUE;
 }
 #endif // VERSION == 'C'
+
+
 
 // This function finds factorial of large numbers and prints them
 LPTSTR factorial(LONG n) {
