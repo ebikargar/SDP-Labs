@@ -1,5 +1,5 @@
 /*
-Lab 11 exercise 02
+Lab 12 exercise 01
 
 This program is based on the model of producers and consumers. In this case there is a single producer
 that reads a file where LONG are stored. All of the consumers receive the same data from the producer
