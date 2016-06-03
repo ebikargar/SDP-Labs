@@ -28,7 +28,10 @@ for concurrent access by using different techniques:
 #include <stdio.h>
 #include <assert.h>
 
+//------------------------------------------------------
+// simply change this define to 'A', 'B', 'C', or 'D'
 #define VERSION 'D'
+//------------------------------------------------------
 
 #if VERSION == 'A'
 #define initializeSync initializeSyncA
@@ -125,6 +128,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		_ftprintf(stderr, _T("Error initializing the sync object\n"));
 		return 2;
 	}
+	// open the accounts file
 	hAccounts = openAccountsFile(argv[1]);
 	if (hAccounts == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Error opening the accounts file\n"));
@@ -140,6 +144,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 
 	nThreads = argc - 2;
+	// allocate arrays for threads
 	params = (LPPARAM)calloc(nThreads, sizeof(PARAM));
 	tHandles = (LPHANDLE)calloc(nThreads, sizeof(HANDLE));
 	if (params == NULL || tHandles == NULL) {
@@ -149,11 +154,15 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		return 5;
 	}
 
-	// for each operation file, do the work
+	// for each operation file, create a thread
 	for (i = 0; i < nThreads; i++) {
 		params[i].hAccounts = hAccounts;
 		params[i].accountsFileName = argv[1];
 		params[i].operationsFileName = argv[i + 2];
+		// the sync union value is copied, so that version A threads can have a different handle.
+		// Versions C and D will have different copies of the same HANDLE (it is a pointer, so
+		// the semaphore and the mutex will be shared. Version B has a pointer to a critical section
+		// that is shared.
 		params[i].sync = sync;
 		tHandles[i] = CreateThread(NULL, 0, doOperations, &params[i], 0, NULL);
 		if (tHandles[i] == INVALID_HANDLE_VALUE) {
@@ -167,7 +176,10 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		assert(tHandles[i]);
 	}
 
-	WaitForMultipleObjects(nThreads, tHandles, TRUE, INFINITE);
+	if (WaitForMultipleObjects(nThreads, tHandles, TRUE, INFINITE) == WAIT_FAILED) {
+		_ftprintf(stderr, _T("Impossible to wait the threads. Error: %x\n"), GetLastError());
+		return 7;
+	}
 	for (i = 0; i < nThreads; i++) {
 		CloseHandle(tHandles[i]);
 	}
@@ -368,6 +380,10 @@ VOID freeSync(LPSYNC_OBJ sync) {
 #if VERSION == 'C' || VERSION == 'D'
 	CloseHandle(sync->h);
 #endif // VERSION == 'C' || VERSION == 'D'
+#if VERSION == 'B'
+	DeleteCriticalSection(sync->cs);
+	free(sync->cs);
+#endif // VERSION == 'B'
 }
 
 VOID teardownThread(LPPARAM param) {
