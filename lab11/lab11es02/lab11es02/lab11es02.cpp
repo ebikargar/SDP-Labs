@@ -200,6 +200,7 @@ DWORD WINAPI producerThreadFunction(LPVOID p) {
 	DWORD tId;
 	DWORD timeToSleep;
 	TCHAR msgContent[MESSAGE_CONTENT_MAX_LEN];
+	INT randomValue;
 	tId = GetCurrentThreadId();
 	srand(tId);
 	for (i = 0; i < MAX_THREAD_ITERATIONS; i++) {
@@ -208,7 +209,8 @@ DWORD WINAPI producerThreadFunction(LPVOID p) {
 		_tprintf(_T("producer %u going to sleep for %u\n"), tId, timeToSleep);
 #endif // DEBUG
 		Sleep(timeToSleep);
-		_stprintf(msgContent, _T("hello from thread %u"), tId);
+		randomValue = rand();
+		_stprintf(msgContent, _T("hello from thread %u. My random number is %d"), tId, randomValue);
 		m = writeMessage(msgContent);
 		enqueue(param->q, m);
 		_tprintf(_T("producer %u sent a message\n"), tId);
