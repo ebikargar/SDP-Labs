@@ -317,7 +317,7 @@ BOOL releaseSyncB(LPSYNC_OBJ sync, OVERLAPPED o) {
 }
 
 BOOL initializeSyncC(LPSYNC_OBJ sync) {
-	sync->h = CreateMutex(NULL, FALSE, _T("Lab11es01_Mutex"));
+	sync->h = CreateMutex(NULL, FALSE, NULL);
 	if (sync->h == INVALID_HANDLE_VALUE) {
 		return FALSE;
 	}
@@ -334,7 +334,7 @@ BOOL releaseSyncC(LPSYNC_OBJ sync, OVERLAPPED o) {
 }
 
 BOOL initializeSyncD(LPSYNC_OBJ sync) {
-	sync->h = CreateSemaphore(NULL, 1, 1, _T("Lab11es01_Semaphore"));
+	sync->h = CreateSemaphore(NULL, 1, 1, NULL);
 	if (sync->h == INVALID_HANDLE_VALUE) {
 		return FALSE;
 	}
