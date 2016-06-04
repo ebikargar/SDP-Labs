@@ -22,9 +22,9 @@ TODO description
 
 #define FILE_HANDLE_EXCEPTION 1
 #define ODD_VALUES_EXCEPTION 2
-#define FILE_WRONG_FORMAT_EXCEPTION 3
-#define HEAP_CREATE_FAILED_EXCEPTION 4
-#define UNEXPECTED_END_OF_FILE_EXCEPTION 5
+//#define FILE_WRONG_FORMAT_EXCEPTION 3
+#define HEAP_CREATE_FAILED_EXCEPTION 3
+#define UNEXPECTED_END_OF_FILE_EXCEPTION 4
 
 typedef struct _PARAM {
 	CRITICAL_SECTION cs;
@@ -137,13 +137,15 @@ DWORD WINAPI secondThread(LPVOID p) {
 		}
 		__try {
 			if (!ReadFile(hIn, &nOfEntries, sizeof(LONG), &nRead, NULL) || nRead != sizeof(LONG)) {
-				ReportException(_T("Second Thread: impossible to read the number of entries"), FILE_WRONG_FORMAT_EXCEPTION);
+				ReportException(_T("Second Thread: impossible to read the number of entries"), UNEXPECTED_END_OF_FILE_EXCEPTION);
 			}
-			heap = HeapCreate(HEAP_GENERATE_EXCEPTIONS, 0, 0);
+			heap = HeapCreate(HEAP_GENERATE_EXCEPTIONS, 0, 24);
 			if (heap == NULL) {
 				ReportException(_T("Second thread: impossible to create a new heap"), HEAP_CREATE_FAILED_EXCEPTION);
 			}
-			numbers = (LPLONG)HeapAlloc(heap, HEAP_ZERO_MEMORY, nOfEntries * sizeof(LONG));
+			numbers = (LPLONG)HeapAlloc(heap, HEAP_ZERO_MEMORY | HEAP_GENERATE_EXCEPTIONS, nOfEntries * sizeof(LONG));
+			// HeapAlloc generates exceptions only on second call??
+			//numbers = (LPLONG)HeapAlloc(heap, HEAP_ZERO_MEMORY | HEAP_GENERATE_EXCEPTIONS, nOfEntries * sizeof(LONG));
 			i = 0;
 			while (ReadFile(hIn, &numbers[i], sizeof(LONG), &nRead, NULL) && nRead > 0) {
 				i++;
@@ -166,7 +168,11 @@ DWORD WINAPI secondThread(LPVOID p) {
 			_tprintf(_T("Second thread successfully read\n"));
 
 			// TODO sort array
-			// TODO print arrau
+			// this is a EXCEPTION_ACCESS_VIOLATION
+			numbers[12345] = 0;
+			// TODO print array
+
+			HeapFree(heap, HEAP_GENERATE_EXCEPTIONS, numbers);
 		}
 		__finally {
 			CloseHandle(hIn);
@@ -223,12 +229,45 @@ DWORD myFirstFilter(DWORD code) {
 		}
 	}
 	if (result == EXCEPTION_CONTINUE_SEARCH) {
+		result = EXCEPTION_EXECUTE_HANDLER;
 		_tprintf(_T("Saved at the last chance. Catched an unpredicted exception, be careful: %x\n"), code);
 	}
 	return result;
 }
 DWORD mySecondFilter(DWORD code) {
 	DWORD result = EXCEPTION_EXECUTE_HANDLER;
-	// TODO
+	DWORD userCode;
+	if ((0x20000000 & code)) {
+		userCode = (0x0FFFFFFF & code);
+		switch (userCode) {
+		case FILE_HANDLE_EXCEPTION:
+			_tprintf(_T("catched a FILE_HANDLE_EXCEPTION\n"));
+		case UNEXPECTED_END_OF_FILE_EXCEPTION:
+			_tprintf(_T("catched a UNEXPECTED_END_OF_FILE_EXCEPTION\n"));
+		case HEAP_CREATE_FAILED_EXCEPTION:
+			_tprintf(_T("catched a HEAP_CREATE_FAILED_EXCEPTION\n"));
+		default:
+			result = EXCEPTION_CONTINUE_SEARCH;
+			break;
+		}
+	} else {
+		switch (code) {
+		case STATUS_NO_MEMORY:
+			// never catched
+			_tprintf(_T("catched a STATUS_NO_MEMORY\n"));
+			break;
+		case EXCEPTION_ACCESS_VIOLATION:
+			_tprintf(_T("catched a EXCEPTION_ACCESS_VIOLATION\n"));
+			break;
+		case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+			_tprintf(_T("catched a EXCEPTION_ARRAY_BOUNDS_EXCEEDED\n"));
+		default:
+			result = EXCEPTION_CONTINUE_SEARCH;
+			break;
+		}
+	}
+	if (result == EXCEPTION_CONTINUE_SEARCH) {
+		_tprintf(_T("Saved at the last chance. Catched an unpredicted exception, be careful: %x\n"), code);
+	}
 	return result;
 }
