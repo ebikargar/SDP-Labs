@@ -22,11 +22,15 @@ TODO description
 
 #define SERVER_PARAM _T("--server")
 #define MAX_LEN 100
+// CTRL-Z code found on https://codereview.appspot.com/45150045
 #define CTRL_Z 0x1A
 #define END_MSG _T(".end")
 
 VOID server(LPTSTR);
 VOID client(LPTSTR);
+
+BOOL lockFileLine(HANDLE hFile, DWORD line);
+BOOL unlockFileLine(HANDLE hFile, DWORD line);
 
 INT _tmain(INT argc, LPTSTR argv[]) {
 	/*
@@ -51,21 +55,29 @@ VOID server(LPTSTR tmpFileName) {
 	HANDLE tmpFile;
 	TCHAR line[MAX_LEN];
 	DWORD nRead;
+	DWORD i;
 	
 	tmpFile = CreateFile(tmpFileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, NULL, NULL);
 	if (tmpFile == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Impossible to create temporary file %s. Error: %x\n"), tmpFileName, GetLastError());
 		return;
 	}
-
-	while (ReadFile(tmpFile, line, MAX_LEN * sizeof(TCHAR), &nRead, NULL)) {
+	i = 0;
+	while (TRUE) {
+		lockFileLine(tmpFile, i);
+		if (!ReadFile(tmpFile, line, MAX_LEN * sizeof(TCHAR), &nRead, NULL)) {
+			// TODO understand why gets there
+			_tprintf(_T("Found file end\n"));
+			break;
+		}
+		unlockFileLine(tmpFile, i);
 		if (nRead != MAX_LEN * sizeof(TCHAR)) {
 			_ftprintf(stderr, _T("Mismatch o the file record size\n"));
 			break;
 		}
-		_tprintf(_T("server: %s"), line);
+		_tprintf(_T("server: (i = %d) %s"), i, line);
 	}
-
+	unlockFileLine(tmpFile, i);
 	DeleteFile(tmpFileName);
 	_tprintf(_T("server\n"));
 }
@@ -96,11 +108,14 @@ VOID client(LPTSTR myName) {
 	_stprintf(arguments, _T("%s %s %s"), executable, SERVER_PARAM, tmpFileName);
 	GetStartupInfo(&startupInfo);
 
+	i = 0;
+	lockFileLine(tmpFile, i);
+
 	if (!CreateProcess(myName, arguments, NULL, NULL, TRUE, 0, NULL, NULL, &startupInfo, &processInfo)) {
 		_ftprintf(stderr, _T("Impossible to create server process. Error: %x\n"), GetLastError());
 		return;
 	}
-	i = 0;
+	
 	rcc.nLength = sizeof(CONSOLE_READCONSOLE_CONTROL);
 	rcc.nInitialChars = 0;
 	rcc.dwCtrlWakeupMask = 1 << CTRL_Z;
@@ -119,17 +134,60 @@ VOID client(LPTSTR myName) {
 		}
 		// TODOS:
 		// lock new record
+		
 		// unlock previous record
+		
 		if (!WriteFile(tmpFile, line, MAX_LEN * sizeof(TCHAR), &nWritten, NULL) || nWritten != MAX_LEN * sizeof(TCHAR)) {
 			_ftprintf(stderr, _T("Impossible to write the string to temp file. Error: %x\n"), GetLastError());
 			return;
 		}
+		lockFileLine(tmpFile, i + 1);
+		unlockFileLine(tmpFile, i);
 		i++;
+	}
+	if (i > 0) {
+		unlockFileLine(tmpFile, i);
 	}
 	if (!WriteFile(tmpFile, line, MAX_LEN * sizeof(TCHAR), &nWritten, NULL) || nWritten != MAX_LEN * sizeof(TCHAR)) {
 		_ftprintf(stderr, _T("Impossible to write the string to temp file. Error: %x\n"), GetLastError());
 		return;
 	}
 
-	_tprintf(_T("Done\n"));
+	_tprintf(_T("Done. Now i wait server process\n"));
+	WaitForSingleObject(processInfo.hProcess, INFINITE);
+}
+
+BOOL lockFileLine(HANDLE hFile, DWORD line) {
+	OVERLAPPED ov = { 0, 0, 0, 0, NULL };
+	LONGLONG n = line - 1;
+	LARGE_INTEGER filePos, size;
+	DWORD nRead;
+	filePos.QuadPart = n * MAX_LEN * sizeof(TCHAR);
+	ov.Offset = filePos.LowPart;
+	ov.OffsetHigh = filePos.HighPart;
+	size.QuadPart = MAX_LEN * sizeof(TCHAR);
+	// lock the portion of file. The OVERLAPPED is used to specify the starting displacement of the record to be locked
+	// and its size is specified on the 4th and 5th parameter
+	if (!LockFileEx(hFile, LOCKFILE_EXCLUSIVE_LOCK, 0, size.LowPart, size.HighPart, &ov)) {
+		_ftprintf(stderr, _T("Error locking file portion. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+BOOL unlockFileLine(HANDLE hFile, DWORD line) {
+	OVERLAPPED ov = { 0, 0, 0, 0, NULL };
+	LONGLONG n = line - 1;
+	LARGE_INTEGER filePos, size;
+	DWORD nRead;
+	filePos.QuadPart = n * MAX_LEN * sizeof(TCHAR);
+	ov.Offset = filePos.LowPart;
+	ov.OffsetHigh = filePos.HighPart;
+	size.QuadPart = MAX_LEN * sizeof(TCHAR);
+	// lock the portion of file. The OVERLAPPED is used to specify the starting displacement of the record to be locked
+	// and its size is specified on the 4th and 5th parameter
+	if (!UnlockFileEx(hFile, 0, size.LowPart, size.HighPart, &ov)) {
+		_ftprintf(stderr, _T("Error unlocking file portion. Error: %x\n"), GetLastError());
+		return FALSE;
+	}
+	return TRUE;
 }
