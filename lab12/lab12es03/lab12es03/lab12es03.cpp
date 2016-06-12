@@ -57,7 +57,7 @@ VOID server(LPTSTR tmpFileName) {
 	DWORD nRead;
 	DWORD i;
 	
-	tmpFile = CreateFile(tmpFileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, NULL, NULL);
+	tmpFile = CreateFile(tmpFileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, NULL, NULL);
 	if (tmpFile == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Impossible to create temporary file %s. Error: %x\n"), tmpFileName, GetLastError());
 		return;
@@ -67,19 +67,27 @@ VOID server(LPTSTR tmpFileName) {
 		lockFileLine(tmpFile, i);
 		if (!ReadFile(tmpFile, line, MAX_LEN * sizeof(TCHAR), &nRead, NULL)) {
 			// TODO understand why gets there
+			_ftprintf(stderr, _T("Error: %x\n"), GetLastError());
 			_tprintf(_T("Found file end\n"));
+			unlockFileLine(tmpFile, i);
 			break;
 		}
 		unlockFileLine(tmpFile, i);
 		if (nRead != MAX_LEN * sizeof(TCHAR)) {
-			_ftprintf(stderr, _T("Mismatch o the file record size\n"));
+			_ftprintf(stderr, _T("Mismatch o the file record size %d\n"), nRead);
 			break;
 		}
 		_tprintf(_T("server: (i = %d) %s"), i, line);
+		if (_tcsncmp(line, END_MSG, MAX_LEN) == 0) {
+			_tprintf(_T("Found the end\n"));
+			break;
+		}
+		i++;
 	}
-	unlockFileLine(tmpFile, i);
-	DeleteFile(tmpFileName);
-	_tprintf(_T("server\n"));
+	CloseHandle(tmpFile);
+	if (!DeleteFile(tmpFileName)) {
+		_ftprintf(stderr, _T("Impossible to delete file. Error: %x"), GetLastError());
+	}
 }
 VOID client(LPTSTR myName) {
 	HANDLE tmpFile = NULL;
@@ -145,21 +153,20 @@ VOID client(LPTSTR myName) {
 		unlockFileLine(tmpFile, i);
 		i++;
 	}
-	if (i > 0) {
-		unlockFileLine(tmpFile, i);
-	}
+
 	if (!WriteFile(tmpFile, line, MAX_LEN * sizeof(TCHAR), &nWritten, NULL) || nWritten != MAX_LEN * sizeof(TCHAR)) {
 		_ftprintf(stderr, _T("Impossible to write the string to temp file. Error: %x\n"), GetLastError());
 		return;
 	}
-
+	unlockFileLine(tmpFile, i);
+	CloseHandle(tmpFile);
 	_tprintf(_T("Done. Now i wait server process\n"));
 	WaitForSingleObject(processInfo.hProcess, INFINITE);
 }
 
 BOOL lockFileLine(HANDLE hFile, DWORD line) {
 	OVERLAPPED ov = { 0, 0, 0, 0, NULL };
-	LONGLONG n = line - 1;
+	LONGLONG n = line;
 	LARGE_INTEGER filePos, size;
 	DWORD nRead;
 	filePos.QuadPart = n * MAX_LEN * sizeof(TCHAR);
@@ -172,11 +179,12 @@ BOOL lockFileLine(HANDLE hFile, DWORD line) {
 		_ftprintf(stderr, _T("Error locking file portion. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
+	_tprintf(_T("Aquired lock on line %d\n"), line);
 	return TRUE;
 }
 BOOL unlockFileLine(HANDLE hFile, DWORD line) {
 	OVERLAPPED ov = { 0, 0, 0, 0, NULL };
-	LONGLONG n = line - 1;
+	LONGLONG n = line;
 	LARGE_INTEGER filePos, size;
 	DWORD nRead;
 	filePos.QuadPart = n * MAX_LEN * sizeof(TCHAR);
@@ -189,5 +197,6 @@ BOOL unlockFileLine(HANDLE hFile, DWORD line) {
 		_ftprintf(stderr, _T("Error unlocking file portion. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
+	_tprintf(_T("Released lock on line %d\n"), line);
 	return TRUE;
 }
