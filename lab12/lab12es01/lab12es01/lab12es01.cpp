@@ -74,9 +74,9 @@ typedef struct _SyncStructB {
 /*
 	consumers flow in version C:
 	+-----------------------+---------------------------------+-----------------------+
-							|                                 |
-		prelude room     door 1     room 1 (work there)     door 2     out (room 2)
-							|                                 |
+	                        |                                 |
+	    prelude room     door 1     room 1 (work there)     door 2     out (room 2)
+	                        |                                 |
 	+-----------------------+---------------------------------+-----------------------+
 
 	Door 1 is opened by the producer, to allow consumer to enter room 1 and do their job with the data.
