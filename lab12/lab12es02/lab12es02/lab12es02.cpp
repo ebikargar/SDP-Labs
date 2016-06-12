@@ -23,8 +23,11 @@ TODO description
 #define FILE_HANDLE_EXCEPTION 1
 #define ODD_VALUES_EXCEPTION 2
 //#define FILE_WRONG_FORMAT_EXCEPTION 3
-#define HEAP_CREATE_FAILED_EXCEPTION 3
+#define MEMORY_ALLOCATION_EXCEPTION 3
 #define UNEXPECTED_END_OF_FILE_EXCEPTION 4
+
+
+#define MAX_LENGTH_RESULT_STR 2048
 
 typedef struct _PARAM {
 	CRITICAL_SECTION cs;
@@ -40,6 +43,9 @@ VOID ReportException(LPCTSTR UserMessage, DWORD ExceptionCode);
 DWORD myFirstFilter(DWORD code);
 DWORD mySecondFilter(DWORD code);
 
+INT compareLong(LPCVOID a, LPCVOID b);
+BOOL checkTerminate(LPPARAM param);
+
 INT _tmain(INT argc, LPTSTR argv[]) {
 	HANDLE hThreads[2];
 	PARAM param;
@@ -53,7 +59,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	param.fileName = argv[1];
 	param.terminate = FALSE;
 	InitializeCriticalSection(&param.cs);
-	
+
 	hThreads[0] = CreateThread(NULL, 0, firstThread, &param, CREATE_SUSPENDED, &param.threadIds[0]);
 	if (hThreads[0] == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Impossible to create first thread. Error: %x\n"), GetLastError());
@@ -88,23 +94,18 @@ DWORD WINAPI firstThread(LPVOID p) {
 	LPPARAM param = (LPPARAM)p;
 	LONG number[2];
 	DWORD nRead;
-	BOOL terminate;
 	__try {
 		HANDLE hIn = CreateFile(param->fileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 		if (hIn == INVALID_HANDLE_VALUE) {
 			ReportException(_T("First thread: impossible to open file"), FILE_HANDLE_EXCEPTION);
 		}
 		__try {
-			// maybe enable exceptions for arithmetic operations?
 			while (ReadFile(hIn, number, 2 * sizeof(LONG), &nRead, NULL) && nRead > 0) {
 				if (nRead != 2 * sizeof(LONG)) {
 					ReportException(_T("First thread: read size mismatch"), ODD_VALUES_EXCEPTION);
 				}
 				_tprintf(_T("First thread result: %ld\n"), number[0] / number[1]);
-				EnterCriticalSection(&param->cs);
-				terminate = param->terminate;
-				LeaveCriticalSection(&param->cs);
-				if (terminate) {
+				if (checkTerminate(param)) {
 					_tprintf(_T("They told me to terminate\n"));
 					__leave;
 				}
@@ -124,12 +125,11 @@ DWORD WINAPI firstThread(LPVOID p) {
 }
 DWORD WINAPI secondThread(LPVOID p) {
 	LPPARAM param = (LPPARAM)p;
-	LPLONG numbers;
+	LPLONG numbers = NULL;
 	LONG nOfEntries;
 	DWORD nRead;
-	BOOL terminate;
-	HANDLE heap;
 	LONG i;
+	TCHAR result[MAX_LENGTH_RESULT_STR];
 	__try {
 		HANDLE hIn = CreateFile(param->fileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 		if (hIn == INVALID_HANDLE_VALUE) {
@@ -139,23 +139,20 @@ DWORD WINAPI secondThread(LPVOID p) {
 			if (!ReadFile(hIn, &nOfEntries, sizeof(LONG), &nRead, NULL) || nRead != sizeof(LONG)) {
 				ReportException(_T("Second Thread: impossible to read the number of entries"), UNEXPECTED_END_OF_FILE_EXCEPTION);
 			}
-			heap = HeapCreate(HEAP_GENERATE_EXCEPTIONS, 0, 24);
-			if (heap == NULL) {
-				ReportException(_T("Second thread: impossible to create a new heap"), HEAP_CREATE_FAILED_EXCEPTION);
+			numbers = (LPLONG)malloc(nOfEntries * sizeof(LONG));
+			// I wanted to use a dedicated heap with HEAP_GENERATE_EXCEPTIONS, but
+			// HeapAlloc generates exceptions only on second call even though there is not enough memory for the first call
+			if (numbers == NULL) {
+				ReportException(_T("Second Thread: impossible to allocate the array"), MEMORY_ALLOCATION_EXCEPTION);
 			}
-			numbers = (LPLONG)HeapAlloc(heap, HEAP_ZERO_MEMORY | HEAP_GENERATE_EXCEPTIONS, nOfEntries * sizeof(LONG));
-			// HeapAlloc generates exceptions only on second call??
-			//numbers = (LPLONG)HeapAlloc(heap, HEAP_ZERO_MEMORY | HEAP_GENERATE_EXCEPTIONS, nOfEntries * sizeof(LONG));
+
 			i = 0;
 			while (ReadFile(hIn, &numbers[i], sizeof(LONG), &nRead, NULL) && nRead > 0) {
 				i++;
 				if (nRead != sizeof(LONG)) {
 					ReportException(_T("Second thread: read size mismatch"), UNEXPECTED_END_OF_FILE_EXCEPTION);
 				}
-				EnterCriticalSection(&param->cs);
-				terminate = param->terminate;
-				LeaveCriticalSection(&param->cs);
-				if (terminate) {
+				if (checkTerminate(param)) {
 					// go to finally
 					_tprintf(_T("They told me to terminate\n"));
 					__leave;
@@ -165,17 +162,21 @@ DWORD WINAPI secondThread(LPVOID p) {
 			if (i != nOfEntries) {
 				ReportException(_T("Second thread: number of entries mismatch"), UNEXPECTED_END_OF_FILE_EXCEPTION);
 			}
-			_tprintf(_T("Second thread successfully read\n"));
+			//_tprintf(_T("Second thread successfully read\n"));
 
-			// TODO sort array
-			// this is a EXCEPTION_ACCESS_VIOLATION
-			numbers[12345] = 0;
-			// TODO print array
-
-			HeapFree(heap, HEAP_GENERATE_EXCEPTIONS, numbers);
+			// sort array
+			qsort(numbers, nOfEntries, sizeof(LONG), compareLong);
+			_tcsncpy(result, _T("Second thread sorted:"), MAX_LENGTH_RESULT_STR);
+			for (i = 0; i < nOfEntries; i++) {
+				_stprintf(result, _T("%s %ld"), result, numbers[i]);
+			}
+			_tprintf(_T("%s\n"), result);
 		}
 		__finally {
 			CloseHandle(hIn);
+			if (numbers != NULL) {
+				free(numbers);
+			}
 			_tprintf(_T("finally\n"));
 		}
 	}
@@ -244,8 +245,8 @@ DWORD mySecondFilter(DWORD code) {
 			_tprintf(_T("catched a FILE_HANDLE_EXCEPTION\n"));
 		case UNEXPECTED_END_OF_FILE_EXCEPTION:
 			_tprintf(_T("catched a UNEXPECTED_END_OF_FILE_EXCEPTION\n"));
-		case HEAP_CREATE_FAILED_EXCEPTION:
-			_tprintf(_T("catched a HEAP_CREATE_FAILED_EXCEPTION\n"));
+		case MEMORY_ALLOCATION_EXCEPTION:
+			_tprintf(_T("catched a MEMORY_ALLOCATION_EXCEPTION\n"));
 		default:
 			result = EXCEPTION_CONTINUE_SEARCH;
 			break;
@@ -270,4 +271,19 @@ DWORD mySecondFilter(DWORD code) {
 		_tprintf(_T("Saved at the last chance. Catched an unpredicted exception, be careful: %x\n"), code);
 	}
 	return result;
+}
+
+INT compareLong(LPCVOID a, LPCVOID b) {
+	LONG la = *((LPLONG)a);
+	LONG lb = *((LPLONG)b);
+	LONG diff = la - lb;
+	return (diff > 0) ? 1 : (diff == 0) ? 0 : -1;
+}
+
+BOOL checkTerminate(LPPARAM param) {
+	BOOL terminate;
+	EnterCriticalSection(&param->cs);
+	terminate = param->terminate;
+	LeaveCriticalSection(&param->cs);
+	return terminate;
 }
