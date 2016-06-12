@@ -1,10 +1,18 @@
 /*
 Lab 12 exercise 02
 
-TODO description
+Exercise about stuctured exception handling. The two threads can generate
+ exceptions during their execution, that are captured in the __except block.
+ Some exceptions are user-generated, while others are generated automatically.
+ The other thread periodically checks a flag in the parameter in order to
+ understand if it needs to terminate.
 
 @Author: Martino Mensio
 */
+
+// SAFE = TRUE -> the filter captures every exception
+// SAFE = FALSE -> the filter only captures some exceptions
+#define SAFE TRUE
 
 #ifndef UNICODE
 #define UNICODE
@@ -20,9 +28,9 @@ TODO description
 #include <stdio.h>
 #include <assert.h>
 
+// user-defined codes for some exceptions (not automatically thrown)
 #define FILE_HANDLE_EXCEPTION 1
 #define ODD_VALUES_EXCEPTION 2
-//#define FILE_WRONG_FORMAT_EXCEPTION 3
 #define MEMORY_ALLOCATION_EXCEPTION 3
 #define UNEXPECTED_END_OF_FILE_EXCEPTION 4
 
@@ -30,10 +38,10 @@ TODO description
 #define MAX_LENGTH_RESULT_STR 2048
 
 typedef struct _PARAM {
-	CRITICAL_SECTION cs;
-	volatile BOOL terminate;
-	LPTSTR fileName;
-	DWORD threadIds[2];
+	CRITICAL_SECTION cs;	// protects the terminate flag
+	volatile BOOL terminate; // if TRUE, the thread must terminate
+	LPTSTR fileName;		// name of the file to process
+	DWORD threadIds[2];		// not used, but could be used to terminate the other thread (dangerous)
 } PARAM, *LPPARAM;
 
 DWORD WINAPI firstThread(LPVOID);
@@ -101,10 +109,13 @@ DWORD WINAPI firstThread(LPVOID p) {
 		}
 		__try {
 			while (ReadFile(hIn, number, 2 * sizeof(LONG), &nRead, NULL) && nRead > 0) {
+				// check if the values have been read
 				if (nRead != 2 * sizeof(LONG)) {
 					ReportException(_T("First thread: read size mismatch"), ODD_VALUES_EXCEPTION);
 				}
-				_tprintf(_T("First thread result: %ld\n"), number[0] / number[1]);
+				// the division can cause a EXCEPTION_INT_DIVIDE_BY_ZERO
+				_tprintf(_T("First thread result: %ld / %ld = %ld\n"), number[0], number[1], number[0] / number[1]);
+				// check if the other thread is ok
 				if (checkTerminate(param)) {
 					_tprintf(_T("They told me to terminate\n"));
 					__leave;
@@ -113,7 +124,7 @@ DWORD WINAPI firstThread(LPVOID p) {
 		}
 		__finally {
 			CloseHandle(hIn);
-			_tprintf(_T("finally\n"));
+			//_tprintf(_T("finally\n"));
 		}
 	}
 	__except (myFirstFilter(GetExceptionCode())) {
@@ -177,7 +188,7 @@ DWORD WINAPI secondThread(LPVOID p) {
 			if (numbers != NULL) {
 				free(numbers);
 			}
-			_tprintf(_T("finally\n"));
+			//_tprintf(_T("finally\n"));
 		}
 	}
 	__except (mySecondFilter(GetExceptionCode())) {
@@ -188,6 +199,7 @@ DWORD WINAPI secondThread(LPVOID p) {
 	return 0;
 }
 
+// copied from the slides
 VOID ReportException(LPCTSTR UserMessage, DWORD ExceptionCode) {
 	if (lstrlen(UserMessage) > 0) {
 		_ftprintf(stderr, _T("%s\n"), UserMessage);
@@ -202,6 +214,7 @@ DWORD myFirstFilter(DWORD code) {
 	DWORD result = EXCEPTION_EXECUTE_HANDLER;
 	DWORD userCode;
 	if ((0x20000000 & code)) {
+		// it's an user-generated exception
 		userCode = (0x0FFFFFFF & code);
 		switch (userCode) {
 		case FILE_HANDLE_EXCEPTION:
@@ -215,6 +228,7 @@ DWORD myFirstFilter(DWORD code) {
 			break;
 		}
 	} else {
+		// it's an automatically-generated exception
 		switch (code) {
 		case EXCEPTION_INVALID_HANDLE:
 			// never catched
@@ -229,10 +243,12 @@ DWORD myFirstFilter(DWORD code) {
 			break;
 		}
 	}
+#if SAFE == TRUE
 	if (result == EXCEPTION_CONTINUE_SEARCH) {
 		result = EXCEPTION_EXECUTE_HANDLER;
 		_tprintf(_T("Saved at the last chance. Catched an unpredicted exception, be careful: %x\n"), code);
 	}
+#endif // SAFE
 	return result;
 }
 DWORD mySecondFilter(DWORD code) {
@@ -243,10 +259,13 @@ DWORD mySecondFilter(DWORD code) {
 		switch (userCode) {
 		case FILE_HANDLE_EXCEPTION:
 			_tprintf(_T("catched a FILE_HANDLE_EXCEPTION\n"));
+			break;
 		case UNEXPECTED_END_OF_FILE_EXCEPTION:
 			_tprintf(_T("catched a UNEXPECTED_END_OF_FILE_EXCEPTION\n"));
+			break;
 		case MEMORY_ALLOCATION_EXCEPTION:
 			_tprintf(_T("catched a MEMORY_ALLOCATION_EXCEPTION\n"));
+			break;
 		default:
 			result = EXCEPTION_CONTINUE_SEARCH;
 			break;
@@ -267,12 +286,16 @@ DWORD mySecondFilter(DWORD code) {
 			break;
 		}
 	}
+#if SAFE == TRUE
 	if (result == EXCEPTION_CONTINUE_SEARCH) {
+		result = EXCEPTION_EXECUTE_HANDLER;
 		_tprintf(_T("Saved at the last chance. Catched an unpredicted exception, be careful: %x\n"), code);
 	}
+#endif // SAFE
 	return result;
 }
 
+// used in qsort
 INT compareLong(LPCVOID a, LPCVOID b) {
 	LONG la = *((LPLONG)a);
 	LONG lb = *((LPLONG)b);
