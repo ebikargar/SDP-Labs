@@ -47,7 +47,7 @@ set and never pulsed. Two barriers are needed since the threads are cyclic.
 
 
 // Maximum number of digits in output
-#define MAXDIGITS 512
+#define MAXDIGITS 2048
 
 typedef struct _SyncStructA {
 	HANDLE producerSem;			// producer waits 4 times on it, consumers do single signal on it
@@ -74,9 +74,9 @@ typedef struct _SyncStructB {
 /*
 	consumers flow in version C:
 	+-----------------------+---------------------------------+-----------------------+
-	                        |                                 |
-	    prelude room     door 1     room 1 (work there)     door 2     out (room 2)
-	                        |                                 |
+							|                                 |
+		prelude room     door 1     room 1 (work there)     door 2     out (room 2)
+							|                                 |
 	+-----------------------+---------------------------------+-----------------------+
 
 	Door 1 is opened by the producer, to allow consumer to enter room 1 and do their job with the data.
@@ -107,7 +107,8 @@ typedef struct _PARAM {
 DWORD WINAPI consumer(LPVOID p);
 
 LPTSTR factorial(LONG n);
-INT multiply(INT x, INT res[], INT res_size);
+LPTSTR myMultiply(LPTSTR, LONG);
+INT multiply(LONG x, INT res[], INT res_size);
 
 BOOL initializeSyncStruct(LPSyncStruct);
 BOOL producerWait(LPSyncStruct);
@@ -183,7 +184,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 
 	CloseHandle(hIn);
-	
+
 	if (WaitForMultipleObjects(4, consumerThreads, TRUE, INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Wait threads failed. Error: %x\n"), GetLastError());
 		return 8;
@@ -196,15 +197,15 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 DWORD WINAPI consumer(LPVOID p) {
 	LPPARAM param = (LPPARAM)p;
 	LONGLONG accumulator;
-	LPTSTR resultNumber;
+	LPTSTR resultNumber = _T("");
 	LPTSTR stringResult;
 	LONG i;
 	accumulator = 0;
 	if (param->threadNumber == 1) {
 		// thread 1 needs to calculate the partial product, so starts from 1 (neutral value for multiplication)
-		accumulator = 1;
+		resultNumber = _tcsdup(_T("1"));
 	}
-	while(TRUE) {
+	while (TRUE) {
 		// wait for the producer
 		if (!consumerWait(param->sync, param->threadNumber)) {
 			return 1;
@@ -220,9 +221,11 @@ DWORD WINAPI consumer(LPVOID p) {
 			_tprintf(_T("Thread %d (partial sum) value: %lld\n"), param->threadNumber, accumulator);
 			break;
 		case 1:
-			accumulator *= *param->n;
+			stringResult = myMultiply(resultNumber, *param->n);
+			free(resultNumber);
+			resultNumber = stringResult;
 			// TODO manage overflow
-			_tprintf(_T("Thread %d (partial product) value: %lld\n"), param->threadNumber, accumulator);
+			_tprintf(_T("Thread %d (partial product) value: %s\n"), param->threadNumber, resultNumber);
 			break;
 		case 2:
 			resultNumber = factorial(*param->n);
@@ -231,12 +234,16 @@ DWORD WINAPI consumer(LPVOID p) {
 			break;
 		case 3:
 			stringResult = (LPTSTR)calloc(*param->n + 1, sizeof(TCHAR));
-			for (i = 0; i < *param->n; i++) {
-				stringResult[i] = _T('#');
+			if (stringResult == NULL) {
+				_ftprintf(stderr, _T("Error in memory allocation"));
+			} else {
+				for (i = 0; i < *param->n; i++) {
+					stringResult[i] = _T('#');
+				}
+				stringResult[i] = 0;
+				_tprintf(_T("%s\n"), stringResult);
+				free(stringResult);
 			}
-			stringResult[i] = 0;
-			_tprintf(_T("%s\n"), stringResult);
-			free(stringResult);
 			break;
 		default:
 			// should not get here
@@ -248,7 +255,7 @@ DWORD WINAPI consumer(LPVOID p) {
 			return 2;
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -415,7 +422,7 @@ BOOL initializeSyncStruct(LPSyncStruct sync) {
 	// initialize counters
 	sync->threadInFirstRoom = 0;
 	sync->threadInSecondRoom = 0;
-	
+
 	return TRUE;
 }
 BOOL producerWait(LPSyncStruct sync) {
@@ -502,7 +509,9 @@ BOOL DestroySyncStruct(LPSyncStruct sync) {
 LPTSTR factorial(LONG n) {
 	INT res[MAXDIGITS];
 	LPTSTR result = (LPTSTR)calloc(MAXDIGITS, sizeof(TCHAR));
-
+	if (result == NULL) {
+		return _T("");
+	}
 	// Initialize result
 	res[0] = 1;
 	INT res_size = 1;
@@ -518,16 +527,41 @@ LPTSTR factorial(LONG n) {
 	return result;
 }
 
+LPTSTR myMultiply(LPTSTR previous, LONG current) {
+	INT res[MAXDIGITS];
+	LPTSTR result = (LPTSTR)calloc(MAXDIGITS, sizeof(TCHAR));
+	if (result == NULL) {
+		return _T("");
+	}
+
+	if (current == 0) {
+		_tcsncpy(result, _T("0"), 1);
+		return result;
+	}
+	// initialize result
+	INT res_size = (INT)_tcsnlen(previous, MAXDIGITS);
+	for (INT i = 0; i < res_size; i++) {
+		res[res_size - 1 - i] = previous[i] - _T('0');
+	}
+	res_size = multiply(current, res, res_size);
+	result[res_size] = 0;
+	for (INT i = res_size - 1; i >= 0; i--) {
+		result[res_size - 1 - i] = res[i] + _T('0');
+	}
+
+	return result;
+}
+
 // This function multiplies x with the number represented by res[].
 // res_size is size of res[] or number of digits in the number represented
 // by res[]. This function uses simple school mathematics for multiplication.
 // This function may value of res_size and returns the new value of res_size
-INT multiply(INT x, INT res[], INT res_size) {
-	BOOL carry = 0;  // Initialize carry
+INT multiply(LONG x, INT res[], INT res_size) {
+	INT carry = 0;  // Initialize carry
 
 					// One by one multiply n with individual digits of res[]
-	for (INT i = 0; i<res_size; i++) {
-		INT prod = res[i] * x + carry;
+	for (INT i = 0; i < res_size; i++) {
+		LONG prod = res[i] * x + carry;
 		res[i] = prod % 10;  // Store last digit of 'prod' in res[]
 		carry = prod / 10;    // Put rest in carry
 	}
