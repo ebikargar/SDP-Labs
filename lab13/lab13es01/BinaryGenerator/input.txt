@@ -1,0 +1,5 @@
+C:\Test\Users\Documents   *.txt   C:\Test\tmp\doc.txt 
+C:\Test\Users\Downloads\foo   *.docx   C:\Test\tmp\doc.txt 
+C:\Test\Pictures   myPicture.jpg   C:\Test\tmp\bin.doc
+C:\Test\Templates   tmp*.*   C:\Test\tmp\doc.txt
+C:\Test\User\bin   *.*   C:\Test\tmp\bin.doc
