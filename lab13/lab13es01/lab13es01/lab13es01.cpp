@@ -43,14 +43,21 @@ typedef struct _outputRecord {
 	LPFILEINFOCOLLECTED filesInfo;	// array
 } OUTPUTRECORD, *LPOUTPUTRECORD;
 
+typedef struct _protectedBool {
+	BOOL value;
+	CRITICAL_SECTION cs;
+} PROTECTEDBOOL, *LPPROTECTEDBOOL;
+
 typedef struct _processingParam {
 	HANDLE hRecordsFile;
 	CRITICAL_SECTION cs;
+	LPPROTECTEDBOOL pb;
 } PROCESSINGPARAM, *LPPROCESSINGPARAM;
 
 typedef struct _collectorParam {
 	LPTSTR filename;
 	INT updateFileInterval;
+	LPPROTECTEDBOOL pb;
 } COLLECTORPARAM, *LPCOLLECTORPARAM;
 
 BOOL rotateBackslashes(LPTSTR stringToManipulate);
@@ -60,6 +67,13 @@ DWORD WINAPI collectorThreadFunction(LPVOID);
 BOOL outputRecordRead(HANDLE hFile, LPOUTPUTRECORD outputRecord);
 BOOL outputRecordWrite(HANDLE hFile, LPOUTPUTRECORD outputRecord);
 
+VOID protectedBoolInit(LPPROTECTEDBOOL pb);
+VOID protectedBoolSet(LPPROTECTEDBOOL pb, BOOL value);
+BOOL protectedBoolGet(LPPROTECTEDBOOL pb);
+VOID protectedBoolClean(LPPROTECTEDBOOL pb);
+
+BOOL WaitForVeryHugeNumberOfObjects(LPHANDLE handles, DWORD count);
+
 INT _tmain(INT argc, LPTSTR argv[]) {
 	HANDLE hIn;
 	INT N, M;
@@ -67,7 +81,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	LPHANDLE hThreads;
 	COLLECTORPARAM cp;
 	PROCESSINGPARAM pp;
-	INT threadsWaited, toBeWaited;
+	PROTECTEDBOOL pb;
 
 	// check number of parameters
 	if (argc != 4) {
@@ -97,7 +111,11 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		return 5;
 	}
 
+	protectedBoolInit(&pb);
+	protectedBoolSet(&pb, FALSE);
+
 	pp.hRecordsFile = hIn;
+	pp.pb = &pb;
 	InitializeCriticalSection(&pp.cs);
 
 	// create threads
@@ -117,6 +135,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 
 	cp.filename = argv[1];
 	cp.updateFileInterval = M;
+	cp.pb = &pb;
 
 	// create last thread
 	hThreads[N] = CreateThread(NULL, 0, collectorThreadFunction, &cp, 0, NULL);
@@ -129,21 +148,16 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		free(hThreads);
 		return 7;
 	}
-
-	// considering MAXIMUM_WAIT_OBJECTS
-	threadsWaited = 0;
-	while (threadsWaited < N) {
-		toBeWaited = ((N - threadsWaited) > MAXIMUM_WAIT_OBJECTS) ? MAXIMUM_WAIT_OBJECTS : (N - threadsWaited);
-		if (WaitForMultipleObjects(toBeWaited, &hThreads[threadsWaited], TRUE, INFINITE) == WAIT_FAILED) {
-			_ftprintf(stderr, _T("Impossible to wait for all the threads\n"));
-			for (i = 0; i < N + 1; i++) {
-				TerminateThread(hThreads[i], 1);
-				CloseHandle(hThreads[i]);
-			}
-			free(hThreads);
-			return 8;
+	
+	// wait all the threads
+	if (!WaitForVeryHugeNumberOfObjects(hThreads, N)) {
+		_ftprintf(stderr, _T("Impossible to wait for all the threads\n"));
+		for (i = 0; i < N + 1; i++) {
+			TerminateThread(hThreads[i], 1);
+			CloseHandle(hThreads[i]);
 		}
-		threadsWaited += toBeWaited;
+		free(hThreads);
+		return 8;
 	}
 	
 	
@@ -191,6 +205,8 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 	HANDLE hMutexOutput, hSemaphoreOutput, hFileOutput;
 	TCHAR mutexOutputName[NAME_MAX_LEN + PREFIX_NAME_LEN];
 	TCHAR semaphoreOutputName[NAME_MAX_LEN + PREFIX_NAME_LEN];
+
+	//_tprintf(_T("I am alive\n"));
 	
 	while (TRUE) {
 		EnterCriticalSection(&pp->cs);
@@ -202,6 +218,8 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		}
 		if (nRead == 0) {
 			// end of file
+			Sleep(10000);
+			protectedBoolSet(pp->pb, TRUE);
 			break;
 		}
 		if (nRead != sizeof(RECORD)) {
@@ -268,8 +286,12 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 	return 0;
 }
 
-DWORD WINAPI collectorThreadFunction(LPVOID) {
+DWORD WINAPI collectorThreadFunction(LPVOID p) {
+	LPCOLLECTORPARAM cp = (LPCOLLECTORPARAM)p;
 
+	while (!protectedBoolGet(cp->pb)) {
+		Sleep(5000);
+	}
 	return 0;
 }
 
@@ -310,6 +332,43 @@ BOOL outputRecordWrite(HANDLE hFile, LPOUTPUTRECORD outputRecord) {
 	if (nWritten != outputRecord->nFiles * sizeof(DWORD32)) {
 		_ftprintf(stderr, _T("Write size mismatch on filesInfo inside an output record\n"));
 		return FALSE;
+	}
+	return TRUE;
+}
+
+VOID protectedBoolSet(LPPROTECTEDBOOL pb, BOOL value) {
+	EnterCriticalSection(&pb->cs);
+	pb->value = value;
+	LeaveCriticalSection(&pb->cs);
+}
+
+BOOL protectedBoolGet(LPPROTECTEDBOOL pb) {
+	BOOL value;
+	EnterCriticalSection(&pb->cs);
+	value = pb->value;
+	LeaveCriticalSection(&pb->cs);
+	return value;
+}
+
+VOID protectedBoolInit(LPPROTECTEDBOOL pb) {
+	InitializeCriticalSection(&pb->cs);
+}
+
+VOID protectedBoolClean(LPPROTECTEDBOOL pb) {
+	DeleteCriticalSection(&pb->cs);
+}
+
+BOOL WaitForVeryHugeNumberOfObjects(LPHANDLE handles, DWORD count) {
+	DWORD waited, toWait, toWaitNow;
+	toWait = count;
+	waited = 0;
+	while (toWait > 0) {
+		toWaitNow = (toWait > MAXIMUM_WAIT_OBJECTS) ? MAXIMUM_WAIT_OBJECTS : toWait;
+		if (WaitForMultipleObjects(toWaitNow, &handles[waited], TRUE, INFINITE) == WAIT_FAILED) {
+			return FALSE;
+		}
+		waited += toWaitNow;
+		toWait -= toWaitNow;
 	}
 	return TRUE;
 }
