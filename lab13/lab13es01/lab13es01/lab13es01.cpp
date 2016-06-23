@@ -67,6 +67,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	LPHANDLE hThreads;
 	COLLECTORPARAM cp;
 	PROCESSINGPARAM pp;
+	INT threadsWaited, toBeWaited;
 
 	// check number of parameters
 	if (argc != 4) {
@@ -129,16 +130,22 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		return 7;
 	}
 
-	// TODO considering MAXIMUM_WAIT_OBJECTS
-	if (WaitForMultipleObjects(N, hThreads, TRUE, INFINITE) == WAIT_FAILED) {
-		_ftprintf(stderr, _T("Impossible to wait for all the threads\n"));
-		for (i = 0; i < N + 1; i++) {
-			TerminateThread(hThreads[i], 1);
-			CloseHandle(hThreads[i]);
+	// considering MAXIMUM_WAIT_OBJECTS
+	threadsWaited = 0;
+	while (threadsWaited < N) {
+		toBeWaited = ((N - threadsWaited) > MAXIMUM_WAIT_OBJECTS) ? MAXIMUM_WAIT_OBJECTS : (N - threadsWaited);
+		if (WaitForMultipleObjects(toBeWaited, &hThreads[threadsWaited], TRUE, INFINITE) == WAIT_FAILED) {
+			_ftprintf(stderr, _T("Impossible to wait for all the threads\n"));
+			for (i = 0; i < N + 1; i++) {
+				TerminateThread(hThreads[i], 1);
+				CloseHandle(hThreads[i]);
+			}
+			free(hThreads);
+			return 8;
 		}
-		free(hThreads);
-		return 8;
+		threadsWaited += toBeWaited;
 	}
+	
 	
 	for (i = 0; i < N; i++) {
 		CloseHandle(hThreads[i]);
