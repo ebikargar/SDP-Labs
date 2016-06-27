@@ -21,7 +21,7 @@ TODO description
 #include <assert.h>
 
 #define NAME_MAX_LEN 128
-#define LINE_MAX_LEN 128*3 + 2 + 2 + 1 // two spaces, CR, LF, \0
+#define LINE_MAX_LEN 512 // for input files
 
 #define PREFIX_NAME_LEN 3
 #define PREFIX_NAME_SEM _T("SEM")
@@ -30,6 +30,10 @@ TODO description
 #define SWAP_TIMEOUT 50		// time to change part of WaitForMultipleObjects with more than 64 objects
 #define TERMINATION_SEMAPHORE_NAME _T("TerminationSemaphore")
 #define MAX_SEM_VALUE 10000	// upper bound for semaphore
+
+#define TYPE_FILE 1
+#define TYPE_DIR 2
+#define TYPE_DOT 3
 
 typedef struct _record {
 	TCHAR directoryName[NAME_MAX_LEN];
@@ -63,6 +67,10 @@ BOOL outputRecordRead(HANDLE hFile, LPOUTPUTRECORD outputRecord);
 BOOL outputRecordWrite(HANDLE hFile, LPOUTPUTRECORD outputRecord);
 
 DWORD WaitForVeryHugeNumberOfObjects(LPHANDLE handles, DWORD count, BOOL waitForAll);
+
+VOID visitDirectoryAndDo(LPTSTR path1, LPTSTR search, DWORD level, VOID(*toDo)(LPTSTR path, LPOUTPUTRECORD outputRecord), LPOUTPUTRECORD outputRecord);
+static DWORD FileType(LPWIN32_FIND_DATA pFileData);
+VOID updateOutputRecord(LPTSTR path, LPOUTPUTRECORD outputRecord);
 
 INT _tmain(INT argc, LPTSTR argv[]) {
 	HANDLE hIn;
@@ -213,7 +221,12 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		}
 		if (nRead == 0) {
 			// end of file
-			Sleep(1000);
+			// Sleep for 1 second so that i am sure that collector thread has already finished processing output files
+			// because his WaitForMultiple gives no precedence to lower-indexed handles.
+			// Anyway, if this time is not enough, the unprocessed output will be printed in the "purging phase" of
+			// the collector.
+			// But it seems to work also without sleeping, so i won't sleep
+			//Sleep(1000);
 			// signal on termination semaphore
 			if (!ReleaseSemaphore(terminationSemaphore, 1, NULL)) {
 				_ftprintf(stderr, _T("Impossible to release termination semaphore. Error: %x\n"), GetLastError());
@@ -228,16 +241,11 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		}
 		_tprintf(_T("Record read: %s %s %s\n"), record.directoryName, record.inputFileName, record.outputName);
 
-		//Sleep(1000);
-		// TODO: do some job (scan directory and count things)
-		/*
-		scan directory
-		for each file, process it (counting chars and newlines) and add to the outputRecord
-		*/
-		outputRecord.nFiles = 3;
-		outputRecord.nChar = 127;
-		outputRecord.nNewLines = 28;
+		outputRecord.nFiles = 0;
+		outputRecord.nChar = 0;
+		outputRecord.nNewLines = 0;
 
+		visitDirectoryAndDo(record.directoryName, record.inputFileName, 0, updateOutputRecord, &outputRecord);
 
 		_tcsncpy(semaphoreOutputName, PREFIX_NAME_SEM, NAME_MAX_LEN);
 		_tcsncat(semaphoreOutputName, record.outputName, NAME_MAX_LEN - PREFIX_NAME_LEN);
@@ -417,14 +425,16 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 			}
 		}
 	}
-	// only for debug purposes, show the remaining part of the file
-	_tprintf(_T("Purging output files (because you may have forgot to delete them from previous runs)\n"));
+	// show the remaining parts of the files (if the number of records written to them are not multiple of M, or if
+	// the files were not deleted after the previous run (they are still there)
+	// PURGING PHASE
+	_tprintf(_T("\nRemaining contents of output files:\n"));
 	for (i = 0; i < nOutputFiles; i++) {
 		_tprintf(_T("File %s:\n"), outputFileNames[i]);
 		while (outputRecordRead(hOutputFiles[i], &outRecord)) {
 			_tprintf(_T("\tn_files: %u\tn_char: %u\tn_newlines: %u\n"), outRecord.nFiles, outRecord.nChar, outRecord.nNewLines);
 		}
-		_tprintf(_T("OK\n"));
+		_tprintf(_T("END\n"));
 		CloseHandle(hOutputFiles[i]);
 		CloseHandle(hSemaphoresOutputAndTerminationSemaphore[i]);
 	}
@@ -510,4 +520,74 @@ DWORD WaitForVeryHugeNumberOfObjects(LPHANDLE handles, DWORD count, BOOL waitFor
 		}
 	}
 
+}
+
+VOID visitDirectoryAndDo(LPTSTR path1, LPTSTR search, DWORD level, VOID(*toDo)(LPTSTR path, LPOUTPUTRECORD outputRecord), LPOUTPUTRECORD outputRecord) {
+	WIN32_FIND_DATA findFileData;
+	HANDLE hFind;
+	TCHAR searchPath[MAX_PATH];
+	TCHAR newPath1[MAX_PATH];
+
+	// build the searchPath string, to be able to search inside path1: searchPath = path1\*
+	_sntprintf(searchPath, MAX_PATH - 1, _T("%s\\%s"), path1, search);
+	searchPath[MAX_PATH - 1] = 0;
+
+	// search inside path1
+	hFind = FindFirstFile(searchPath, &findFileData);
+	if (hFind == INVALID_HANDLE_VALUE) {
+		_ftprintf(stderr, _T("FindFirstFile failed. Error: %x\n"), GetLastError());
+		return;
+	}
+	do {
+		// generate a new path by appending to path1 the name of the found entry
+		_sntprintf(newPath1, MAX_PATH, _T("%s\\%s"), path1, findFileData.cFileName);
+
+		// check the type of file
+		DWORD fType = FileType(&findFileData);
+		if (fType == TYPE_FILE) {
+			// this is a file
+			//_tprintf(_T("FILE %s "), path1);
+			toDo(newPath1, outputRecord);
+		}
+		if (fType == TYPE_DIR) {
+			// this is a directory
+			//_tprintf(_T("DIR %s\n"), path1);
+			// recursive call to the new paths (in this exercise, no recursion)
+			//visitDirectoryRecursiveAndDo(newPath1, level + 1, toDo, outputRecord);
+		}
+	} while (FindNextFile(hFind, &findFileData));
+
+	FindClose(hFind);
+	return;
+}
+
+static DWORD FileType(LPWIN32_FIND_DATA pFileData) {
+	BOOL IsDir;
+	DWORD FType;
+	FType = TYPE_FILE;
+	IsDir = (pFileData->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+	if (IsDir)
+		if (lstrcmp(pFileData->cFileName, _T(".")) == 0 || lstrcmp(pFileData->cFileName, _T("..")) == 0)
+			FType = TYPE_DOT;
+		else FType = TYPE_DIR;
+		return FType;
+}
+
+VOID updateOutputRecord(LPTSTR path, LPOUTPUTRECORD outputRecord) {
+	FILE *currentFile;
+	TCHAR line[LINE_MAX_LEN];
+	DWORD lineLength;
+	currentFile = _tfopen(path, _T("r"));
+	if (currentFile == NULL) {
+		_ftprintf(stderr, _T("Impossible to open file %s\n"), path);
+		return;
+	}
+	outputRecord->nFiles++;
+	while (_fgetts(line, LINE_MAX_LEN, currentFile) > 0) {
+		lineLength = _tcsnlen(line, LINE_MAX_LEN);
+		outputRecord->nNewLines++;
+		outputRecord->nChar += lineLength;
+	}
+	fclose(currentFile);
+	return;
 }
