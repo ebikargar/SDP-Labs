@@ -399,11 +399,13 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 					}
 					_tprintf(_T("\tn_files: %u\tn_char: %u\tn_newlines: %u\n"), outRecord.nFiles, outRecord.nChar, outRecord.nNewLines);
 				}
+				// update rowsReady because they have been processed
+				rowsReady[result] = 0;
 			}
 		}
 	}
-	// TODO understand why need purging, although Sleep before terminate semaphore
-	_tprintf(_T("Purging output files\n"));
+	// only for debug purposes, show the remaining part of the file
+	_tprintf(_T("Purging output files (because you may have forgot to delete them from previous runs)\n"));
 	for (i = 0; i < nOutputFiles; i++) {
 		_tprintf(_T("File %s:\n"), outputFileNames[i]);
 		while (outputRecordRead(hOutputFiles[i], &outRecord)) {
