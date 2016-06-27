@@ -29,6 +29,7 @@ TODO description
 #define MAX_OUTPUT_FILES 128
 #define SWAP_TIMEOUT 50		// time to change part of WaitForMultipleObjects with more than 64 objects
 #define TERMINATION_SEMAPHORE_NAME _T("TerminationSemaphore")
+#define MAX_SEM_VALUE 10000	// upper bound for semaphore
 
 typedef struct _record {
 	TCHAR directoryName[NAME_MAX_LEN];
@@ -36,31 +37,21 @@ typedef struct _record {
 	TCHAR outputName[NAME_MAX_LEN];
 } RECORD, *LPRECORD;
 
-typedef struct _fileInfoCollected {
-	DWORD nChar;
-	DWORD nNewLines;
-} FILEINFOCOLLECTED, *LPFILEINFOCOLLECTED;
-
 typedef struct _outputRecord {
 	DWORD32 nFiles;
-	LPFILEINFOCOLLECTED filesInfo;	// array
+	DWORD32 nChar;
+	DWORD32 nNewLines;
 } OUTPUTRECORD, *LPOUTPUTRECORD;
-
-typedef struct _protectedBool {
-	BOOL value;
-	CRITICAL_SECTION cs;
-} PROTECTEDBOOL, *LPPROTECTEDBOOL;
 
 typedef struct _processingParam {
 	HANDLE hRecordsFile;
 	CRITICAL_SECTION cs;
-	LPPROTECTEDBOOL pb;
+	DWORD nProcessing;
 } PROCESSINGPARAM, *LPPROCESSINGPARAM;
 
 typedef struct _collectorParam {
 	LPTSTR filename;
 	DWORD updateFileInterval;
-	LPPROTECTEDBOOL pb;
 	DWORD nProcessing;	// collector needs to know how many processing threads
 } COLLECTORPARAM, *LPCOLLECTORPARAM;
 
@@ -71,11 +62,6 @@ DWORD WINAPI collectorThreadFunction(LPVOID);
 BOOL outputRecordRead(HANDLE hFile, LPOUTPUTRECORD outputRecord);
 BOOL outputRecordWrite(HANDLE hFile, LPOUTPUTRECORD outputRecord);
 
-VOID protectedBoolInit(LPPROTECTEDBOOL pb);
-VOID protectedBoolSet(LPPROTECTEDBOOL pb, BOOL value);
-BOOL protectedBoolGet(LPPROTECTEDBOOL pb);
-VOID protectedBoolClean(LPPROTECTEDBOOL pb);
-
 DWORD WaitForVeryHugeNumberOfObjects(LPHANDLE handles, DWORD count, BOOL waitForAll);
 
 INT _tmain(INT argc, LPTSTR argv[]) {
@@ -85,7 +71,6 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	LPHANDLE hThreads;
 	COLLECTORPARAM cp;
 	PROCESSINGPARAM pp;
-	PROTECTEDBOOL pb;
 
 	// check number of parameters
 	if (argc != 4) {
@@ -115,17 +100,14 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		return 5;
 	}
 
-	protectedBoolInit(&pb);
-	protectedBoolSet(&pb, FALSE);
-
 	pp.hRecordsFile = hIn;
-	pp.pb = &pb;
 	InitializeCriticalSection(&pp.cs);
+	pp.nProcessing = N;
 
 	// create threads
 	for (i = 0; i < N; i++) {
 		hThreads[i] = CreateThread(NULL, 0, processingThreadFunction, &pp, 0, NULL);
-		if (hThreads[i] == INVALID_HANDLE_VALUE) {
+		if (hThreads[i] == NULL) {
 			_ftprintf(stderr, _T("Impossible to create a thread. Error: %x\n"), GetLastError());
 			for (j = 0; j < i; j++) {
 				// kill all the already created threads
@@ -139,12 +121,11 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 
 	cp.filename = argv[1];
 	cp.updateFileInterval = M;
-	cp.pb = &pb;
 	cp.nProcessing = N;
 
 	// create last thread
 	hThreads[N] = CreateThread(NULL, 0, collectorThreadFunction, &cp, 0, NULL);
-	if (hThreads[N] == INVALID_HANDLE_VALUE) {
+	if (hThreads[N] == NULL) {
 		_ftprintf(stderr, _T("Impossible to create last thread. Error: %x"), GetLastError());
 		for (i = 0; i < N; i++) {
 			TerminateThread(hThreads[i], 1);
@@ -214,8 +195,8 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 	OUTPUTRECORD outputRecord;
 
 	//_tprintf(_T("I am alive\n"));
-	terminationSemaphore = CreateSemaphore(NULL, 0, INFINITE, TERMINATION_SEMAPHORE_NAME);
-	if (terminationSemaphore == INVALID_HANDLE_VALUE) {
+	terminationSemaphore = CreateSemaphore(NULL, 0, pp->nProcessing, TERMINATION_SEMAPHORE_NAME);
+	if (terminationSemaphore == NULL) {
 		_ftprintf(stderr, _T("Impossible to open the termination semaphore. Error: %x\n"), GetLastError());
 		return 1;
 	}
@@ -230,7 +211,7 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		}
 		if (nRead == 0) {
 			// end of file
-			Sleep(10000);
+			Sleep(1000);
 			// TODO signal on termination semaphore
 			if (!ReleaseSemaphore(terminationSemaphore, 1, NULL)) {
 				_ftprintf(stderr, _T("Impossible to release termination semaphore. Error: %x\n"), GetLastError());
@@ -245,20 +226,15 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		}
 		_tprintf(_T("Record read: %s %s %s\n"), record.directoryName, record.inputFileName, record.outputName);
 		
-		Sleep(1000);
+		//Sleep(1000);
 		// TODO: do some job (scan directory and count things)
 		/*
 		scan directory
 		for each file, process it (counting chars and newlines) and add to the outputRecord (may need realloc)
 		*/
 		outputRecord.nFiles = 3;
-		outputRecord.filesInfo = (LPFILEINFOCOLLECTED)calloc(outputRecord.nFiles, sizeof(FILEINFOCOLLECTED));
-		outputRecord.filesInfo[0].nChar = 1;
-		outputRecord.filesInfo[0].nNewLines = 2;
-		outputRecord.filesInfo[1].nChar = 3;
-		outputRecord.filesInfo[1].nNewLines = 4;
-		outputRecord.filesInfo[2].nChar = 5;
-		outputRecord.filesInfo[2].nNewLines = 6;
+		outputRecord.nChar = 127;
+		outputRecord.nNewLines = 28;
 
 
 		_tcsncpy(semaphoreOutputName, PREFIX_NAME_SEM, NAME_MAX_LEN);
@@ -270,13 +246,13 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 
 		// Named Mutex: CreateMutex returns the existing mutex if it has already been created
 		hMutexOutput = CreateMutex(NULL, FALSE, mutexOutputName);
-		if (hMutexOutput == INVALID_HANDLE_VALUE) {
+		if (hMutexOutput == NULL) {
 			_ftprintf(stderr, _T("Impossible to create/open mutex. Error: %x\n"), GetLastError());
 			return 4;
 		}
 		// Named Semaphore: CreateSemaphore returns the existing semaphore if it has already been created
-		hSemaphoreOutput = CreateSemaphore(NULL, 0, INFINITE, semaphoreOutputName);
-		if (hSemaphoreOutput == INVALID_HANDLE_VALUE) {
+		hSemaphoreOutput = CreateSemaphore(NULL, 0, MAX_SEM_VALUE, semaphoreOutputName);
+		if (hSemaphoreOutput == NULL) {
 			_ftprintf(stderr, _T("Impossible to create/open semaphore. Error: %x\n"), GetLastError());
 			return 5;
 		}
@@ -312,7 +288,10 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		ReleaseMutex(hMutexOutput);
 
 		// Signal that a record has been written on the output file
-		ReleaseSemaphore(hSemaphoreOutput, 1, NULL);
+		if (!ReleaseSemaphore(hSemaphoreOutput, 1, NULL)) {
+			_ftprintf(stderr, _T("Impossible to release the semaphore for output file %s. Error: %x\n"), record.outputName, GetLastError());
+			return 10;
+		}
 	}
 
 	return 0;
@@ -348,6 +327,9 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 			CloseHandle(hRecordsFile);
 			return 3;
 		}
+		if (nRead == 0) {
+			break;
+		}
 		found = -1;
 		for (i = 0; i < nOutputFiles; i++) {
 			if (_tcsncmp(outputFileNames[i], record.outputName, NAME_MAX_LEN) == 0) {
@@ -374,21 +356,21 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 		_tcsncat(semaphoreOutputName, outputFileNames[i], NAME_MAX_LEN - PREFIX_NAME_LEN);
 		rotateBackslashes(semaphoreOutputName);
 
-		hSemaphoresOutputAndTerminationSemaphore[i] = CreateSemaphore(NULL, 0, INFINITE, semaphoreOutputName);
-		if (hSemaphoresOutputAndTerminationSemaphore[i] == INVALID_HANDLE_VALUE) {
+		hSemaphoresOutputAndTerminationSemaphore[i] = CreateSemaphore(NULL, 0, MAX_SEM_VALUE, semaphoreOutputName);
+		if (hSemaphoresOutputAndTerminationSemaphore[i] == NULL) {
 			_ftprintf(stderr, _T("Impossible to open semaphore for output file (collector). Error: %x\n"), GetLastError());
 			return 1;
 		}
 		rowsReady[i] = 0;
-		hOutputFiles[i] = CreateFile(outputFileNames[result], GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		hOutputFiles[i] = CreateFile(outputFileNames[i], GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hOutputFiles[i] == INVALID_HANDLE_VALUE) {
-			_ftprintf(stderr, _T("Impossible to open output file %s. Error: %x"), outputFileNames[result], GetLastError());
+			_ftprintf(stderr, _T("Impossible to open output file %s. Error: %x"), outputFileNames[i], GetLastError());
 			return 2;
 		}
 	}
 	// the last handle of the array is the termination Semaphore (signalled by threads that reach end of records file
-	hSemaphoresOutputAndTerminationSemaphore[nOutputFiles] = CreateSemaphore(NULL, 0, INFINITE, TERMINATION_SEMAPHORE_NAME);
-	if (hSemaphoresOutputAndTerminationSemaphore[nOutputFiles] == INVALID_HANDLE_VALUE) {
+	hSemaphoresOutputAndTerminationSemaphore[nOutputFiles] = CreateSemaphore(NULL, 0, cp->nProcessing, TERMINATION_SEMAPHORE_NAME);
+	if (hSemaphoresOutputAndTerminationSemaphore[nOutputFiles] == NULL) {
 		_ftprintf(stderr, _T("Impossible to open termination semaphore (collector). Error: %x\n"), GetLastError());
 		return 1;
 	}
@@ -415,75 +397,49 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 						_ftprintf(stderr, _T("Impossible to read output record\n"));
 						return 2;
 					}
-					_tprintf(_T("\tn_files: %d\n"), outRecord.nFiles);
+					_tprintf(_T("\tn_files: %u\tn_char: %u\tn_newlines: %u\n"), outRecord.nFiles, outRecord.nChar, outRecord.nNewLines);
 				}
 			}
 		}
+	}
+	// TODO understand why need purging, although Sleep before terminate semaphore
+	_tprintf(_T("Purging output files\n"));
+	for (i = 0; i < nOutputFiles; i++) {
+		_tprintf(_T("File %s:\n"), outputFileNames[i]);
+		while (outputRecordRead(hOutputFiles[i], &outRecord)) {
+			_tprintf(_T("\tn_files: %u\tn_char: %u\tn_newlines: %u\n"), outRecord.nFiles, outRecord.nChar, outRecord.nNewLines);
+		}
+		_tprintf(_T("OK\n"));
 	}
 	return 0;
 }
 
 BOOL outputRecordRead(HANDLE hFile, LPOUTPUTRECORD outputRecord) {
 	DWORD nRead;
-	if (!ReadFile(hFile, &outputRecord->nFiles, sizeof(DWORD32), &nRead, NULL)) {
+	if (!ReadFile(hFile, outputRecord, sizeof(OUTPUTRECORD), &nRead, NULL)) {
 		_ftprintf(stderr, _T("Impossible to read nFiles inside an output record. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
-	if (nRead != sizeof(DWORD32)) {
+	if (nRead == 0) {
+		return FALSE;
+	}
+	if (nRead != sizeof(OUTPUTRECORD)) {
 		_ftprintf(stderr, _T("Read size mismatch on nFiles inside an output record\n"));
-		return FALSE;
-	}
-	if (!ReadFile(hFile, &outputRecord->filesInfo, outputRecord->nFiles * sizeof(FILEINFOCOLLECTED), &nRead, NULL)) {
-		_ftprintf(stderr, _T("Impossible to read filesInfo inside an output record. Error: %x\n"), GetLastError());
-		return FALSE;
-	}
-	if (nRead != outputRecord->nFiles * sizeof(DWORD32)) {
-		_ftprintf(stderr, _T("Read size mismatch on filesInfo inside an output record\n"));
 		return FALSE;
 	}
 	return TRUE;
 }
 BOOL outputRecordWrite(HANDLE hFile, LPOUTPUTRECORD outputRecord) {
 	DWORD nWritten;
-	if (!WriteFile(hFile, &outputRecord->nFiles, sizeof(DWORD32), &nWritten, NULL)) {
+	if (!WriteFile(hFile, outputRecord, sizeof(OUTPUTRECORD), &nWritten, NULL)) {
 		_ftprintf(stderr, _T("Impossible to write nFiles inside an output record. Error: %x\n"), GetLastError());
 		return FALSE;
 	}
-	if (nWritten != sizeof(DWORD32)) {
+	if (nWritten != sizeof(OUTPUTRECORD)) {
 		_ftprintf(stderr, _T("Write size mismatch on nFiles inside an output record\n"));
 		return FALSE;
 	}
-	if (!WriteFile(hFile, &outputRecord->filesInfo, outputRecord->nFiles * sizeof(FILEINFOCOLLECTED), &nWritten, NULL)) {
-		_ftprintf(stderr, _T("Impossible to write filesInfo inside an output record. Error: %x\n"), GetLastError());
-		return FALSE;
-	}
-	if (nWritten != outputRecord->nFiles * sizeof(DWORD32)) {
-		_ftprintf(stderr, _T("Write size mismatch on filesInfo inside an output record\n"));
-		return FALSE;
-	}
 	return TRUE;
-}
-
-VOID protectedBoolSet(LPPROTECTEDBOOL pb, BOOL value) {
-	EnterCriticalSection(&pb->cs);
-	pb->value = value;
-	LeaveCriticalSection(&pb->cs);
-}
-
-BOOL protectedBoolGet(LPPROTECTEDBOOL pb) {
-	BOOL value;
-	EnterCriticalSection(&pb->cs);
-	value = pb->value;
-	LeaveCriticalSection(&pb->cs);
-	return value;
-}
-
-VOID protectedBoolInit(LPPROTECTEDBOOL pb) {
-	InitializeCriticalSection(&pb->cs);
-}
-
-VOID protectedBoolClean(LPPROTECTEDBOOL pb) {
-	DeleteCriticalSection(&pb->cs);
 }
 
 // if WaitForAll == TRUE returns 0 or WAIT_FAILED
