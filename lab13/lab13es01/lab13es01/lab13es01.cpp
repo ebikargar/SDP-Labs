@@ -1,7 +1,45 @@
 /*
 Lab 13 exercise 01
 
-TODO description
+Description of exercise is provided into the file lab13/lab13.txt
+
+In order to obtain the expected results, delete the output files before each run of the program.
+If this is not done, this program will append the content to the existing one.
+
+NAMED SEMAPHORES AND MUTEXES:
+
+In order to synchronize on the files between threads, i have used NAMED semaphores and mutexes.
+Since each thread does not know the existence of others (only how many of them in some cases) those
+synchronization objects are not passed as handles, but are globally handled by Windows libraries.
+When a CreateSemaphore or CreateMutex is done with a name, an object of the corresponding type is
+created only if it does not exist yet. If it already exists, those function return an handle to the
+already existing one.
+For each output file there is a named Semaphore and a named Mutex.
+The mutex is used by the writers (who don't know each others) in order to have mutual exclusion with
+respect to the writing phase.
+The semaphore is used to signal to the "collector" thread that a row has been added. When the value of
+the semaphore reaches M, the collector processes M records.
+There is another global named Semaphore that is used to signal how many reading threads have reached
+the end of the file.
+The collector can use a WaitForMultipleObject (modified in order to go beyond the limit of MAXIMUM_WAIT_OBJECTS)
+in order to do something like a UNIX select, and update his own counters to understand what is happening.
+
+READING/PROCESSING THREADS:
+
+The reading threads share the same handle in order to read the input file, and to manage concurrent access
+a critical section is used to protect the reading. In this way, the internal file pointer is automatically
+increased and there is no need to set it using system calls.
+
+Instead, the writing on the output file (specified in each row) is done with a handle that is created every time
+by the reading threads. They must write at the end of the file, so there are calls to the SetFilePointer.
+
+COLLECTOR THREAD:
+
+On the other side, the collector thread has his own handle to read the input file, and stores in an array the names
+of the output files and opens it (keeping file handles to them into an array).
+
+The output files are read with the file hadles created in the set-up phase, and there is no need to update the file
+pointers because the handles used are private.
 
 @Author: Martino Mensio
 */
@@ -21,7 +59,7 @@ TODO description
 #include <assert.h>
 
 #define NAME_MAX_LEN 128
-#define LINE_MAX_LEN 512 // for input files
+#define LINE_MAX_LEN 512 // for scanned files in the visit of the directories
 
 #define PREFIX_NAME_LEN 3
 #define PREFIX_NAME_SEM _T("SEM")
@@ -35,28 +73,28 @@ TODO description
 #define TYPE_DIR 2
 #define TYPE_DOT 3
 
-typedef struct _record {
+typedef struct _record {				// structure of a record in the input file
 	TCHAR directoryName[NAME_MAX_LEN];
 	TCHAR inputFileName[NAME_MAX_LEN];
 	TCHAR outputName[NAME_MAX_LEN];
 } RECORD, *LPRECORD;
 
-typedef struct _outputRecord {
-	DWORD32 nFiles;
-	DWORD32 nChar;
-	DWORD32 nNewLines;
+typedef struct _outputRecord {			// structure of a record into the output files
+	DWORD32 nFiles;		// number of files processed
+	DWORD32 nChar;		// total number of characters in the files processed
+	DWORD32 nNewLines;	// total number of newlines in the files processed
 } OUTPUTRECORD, *LPOUTPUTRECORD;
 
-typedef struct _processingParam {
-	HANDLE hRecordsFile;
-	CRITICAL_SECTION cs;
-	DWORD nProcessing;
+typedef struct _processingParam {		// structure of a parameter passed to a processing thread
+	HANDLE hRecordsFile;	// shared handle on the input file for records
+	CRITICAL_SECTION cs;	// critical section to have mutual exclusion on the recordsFile
+	DWORD nProcessing;		// how many processing threads are we? (used in some semaphore maxCount initialization)
 } PROCESSINGPARAM, *LPPROCESSINGPARAM;
 
-typedef struct _collectorParam {
-	LPTSTR filename;
-	DWORD updateFileInterval;
-	DWORD nProcessing;	// collector needs to know how many processing threads
+typedef struct _collectorParam {		// structure of a parameter passed to the collector thread
+	LPTSTR filename;			// name of the input file for the records (collector will have his own handle for this file)
+	DWORD updateFileInterval;	// M
+	DWORD nProcessing;			// collector needs to know how many processing threads are there, to understand when they all have finished
 } COLLECTORPARAM, *LPCOLLECTORPARAM;
 
 BOOL rotateBackslashes(LPTSTR stringToManipulate);
@@ -109,6 +147,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		return 5;
 	}
 
+	// prepare the processing parameter (one for all threads)
 	pp.hRecordsFile = hIn;
 	InitializeCriticalSection(&pp.cs);
 	pp.nProcessing = N;
@@ -129,11 +168,12 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		}
 	}
 
+	// prepare the collector parameter
 	cp.filename = argv[1];
 	cp.updateFileInterval = M;
 	cp.nProcessing = N;
 
-	// create last thread
+	// create last thread (collector)
 	hThreads[N] = CreateThread(NULL, 0, collectorThreadFunction, &cp, 0, NULL);
 	if (hThreads[N] == NULL) {
 		_ftprintf(stderr, _T("Impossible to create last thread. Error: %x"), GetLastError());
@@ -146,7 +186,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		return 7;
 	}
 
-	// wait all the threads
+	// wait for all of the processing threads
 	if (WaitForVeryHugeNumberOfObjects(hThreads, N, TRUE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Impossible to wait for all the threads\n"));
 		for (i = 0; i < N + 1; i++) {
@@ -163,6 +203,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 	CloseHandle(hIn);
 
+	// wait for the collector thread
 	if (WaitForSingleObject(hThreads[N], INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Impossible to wait for the last thread. Error: %x\n"), GetLastError());
 		TerminateThread(hThreads[N], 1);
@@ -179,6 +220,9 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 }
 
 // named semaphores and mutexes can't have backslashes in the name
+// so the backslashes are transformed into forward slashes (rotation)
+//  - stringToManipulate: input and output (is modified)
+//  - return value: success
 BOOL rotateBackslashes(LPTSTR stringToManipulate) {
 	DWORD i;
 	ULONGLONG strLen = _tcsnlen(stringToManipulate, NAME_MAX_LEN);
@@ -193,6 +237,7 @@ BOOL rotateBackslashes(LPTSTR stringToManipulate) {
 	return TRUE;
 }
 
+// function executed by the processing threads
 DWORD WINAPI processingThreadFunction(LPVOID p) {
 	LPPROCESSINGPARAM pp = (LPPROCESSINGPARAM)p;
 	DWORD nRead, nWritten;
@@ -212,6 +257,7 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 	}
 
 	while (TRUE) {
+		// read a record from the recordsFile (in mutual exclusion)
 		EnterCriticalSection(&pp->cs);
 		result = ReadFile(pp->hRecordsFile, &record, sizeof(RECORD), &nRead, NULL);
 		LeaveCriticalSection(&pp->cs);
@@ -232,7 +278,7 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 				_ftprintf(stderr, _T("Impossible to release termination semaphore. Error: %x\n"), GetLastError());
 				break;
 			}
-			//protectedBoolSet(pp->pb, TRUE);
+			// exit the loop
 			break;
 		}
 		if (nRead != sizeof(RECORD)) {
@@ -241,12 +287,15 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		}
 		_tprintf(_T("Record read: %s %s %s\n"), record.directoryName, record.inputFileName, record.outputName);
 
+		// initialize the outputRecord
 		outputRecord.nFiles = 0;
 		outputRecord.nChar = 0;
 		outputRecord.nNewLines = 0;
 
+		// do the visit that will update the outputRecord
 		visitDirectoryAndDo(record.directoryName, record.inputFileName, 0, updateOutputRecord, &outputRecord);
 
+		// prepare the names for the semaphore and mutex related to this output file
 		_tcsncpy(semaphoreOutputName, PREFIX_NAME_SEM, NAME_MAX_LEN);
 		_tcsncat(semaphoreOutputName, record.outputName, NAME_MAX_LEN - PREFIX_NAME_LEN);
 		rotateBackslashes(semaphoreOutputName);
@@ -267,29 +316,27 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 			break;
 		}
 
-		// acquire the mutex for the output file
+		// acquire the mutex for the output file (mutual exclusion of writers)
 		if (WaitForSingleObject(hMutexOutput, INFINITE) == WAIT_FAILED) {
 			_ftprintf(stderr, _T("Impossible to wait for the semaphore named %s. Error: %x"), mutexOutputName, GetLastError());
 			break;
 		}
-		// write the data
 
-		// open new/existing file
+		// open new/existing output file
 		hFileOutput = CreateFile(record.outputName, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hFileOutput == INVALID_HANDLE_VALUE) {
 			_ftprintf(stderr, _T("Impossible to open/create file %s. Error: %x\n"), record.outputName, GetLastError());
 			ReleaseMutex(hMutexOutput);
 			break;
 		}
-		// go to the end
+		// go to the end of file
 		if (SetFilePointer(hFileOutput, 0, 0, FILE_END) == INVALID_SET_FILE_POINTER) {
 			_ftprintf(stderr, _T("Impossible to set the file pointer to the end of the file %s. Error: %x\n"), record.outputName, GetLastError());
 			ReleaseMutex(hMutexOutput);
 			CloseHandle(hFileOutput);
 			break;
 		}
-		// write
-		//WriteFile(hFileOutput, _T("ciao"), 5 * sizeof(TCHAR), &nWritten, NULL);
+		// write the outputRecord
 		if (!outputRecordWrite(hFileOutput, &outputRecord)) {
 			_ftprintf(stderr, _T("Impossible to write output record. Error: %x\n"), GetLastError());
 			ReleaseMutex(hMutexOutput);
@@ -298,6 +345,7 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		}
 		// release the mutex for the file
 		ReleaseMutex(hMutexOutput);
+		// close the file handle (can't look-ahead to see if it will be used again)
 		CloseHandle(hFileOutput);
 
 		// Signal that a record has been written on the output file
@@ -319,6 +367,7 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 	return 0;
 }
 
+// function executed by the collector thread
 DWORD WINAPI collectorThreadFunction(LPVOID p) {
 	LPCOLLECTORPARAM cp = (LPCOLLECTORPARAM)p;
 	HANDLE hRecordsFile;
@@ -335,6 +384,7 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 	OUTPUTRECORD outRecord;
 	memset(outputFileNames, 0, sizeof(outputFileNames));
 
+	// create a handle for the input file, in order to fill the arrays
 	hRecordsFile = CreateFile(cp->filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hRecordsFile == INVALID_HANDLE_VALUE) {
 		_ftprintf(stderr, _T("Impossible to open the records file. Error: %x\n"), GetLastError());
@@ -343,53 +393,66 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 	// read the file to get the output file names
 	nOutputFiles = 0;
 	while (TRUE) {
+		// read a record
 		if (!ReadFile(hRecordsFile, &record, sizeof(RECORD), &nRead, NULL)) {
 			_ftprintf(stderr, _T("Impossible to read from records file. Error: %x\n"), GetLastError());
 			CloseHandle(hRecordsFile);
 			return 3;
 		}
 		if (nRead == 0) {
+			// end of file
 			break;
 		}
+		// start searching if this file was already found previously
 		found = -1;
 		for (i = 0; i < nOutputFiles; i++) {
+			// comparison on the path
 			if (_tcsncmp(outputFileNames[i], record.outputName, NAME_MAX_LEN) == 0) {
+				// found
 				found = i;
 				break;
 			}
 		}
 		if (found == -1) {
+			// new path
 			if (nOutputFiles >= MAX_OUTPUT_FILES) {
 				_ftprintf(stderr, _T("Too many records in this file\n"));
 				CloseHandle(hRecordsFile);
 				return 4;
 			}
+			// save the path of this file
 			_tcsncpy(outputFileNames[i], record.outputName, NAME_MAX_LEN);
 			nOutputFiles++;
 		}
 	}
+	// no more need of this file
 	CloseHandle(hRecordsFile);
 
-	// Now open all the semaphores for the output files
+	// Now open all the semaphores for the output files and the output files
 
 	for (i = 0; i < nOutputFiles; i++) {
+		// generate the semaphore name following the same procedure as the processing threads
 		_tcsncpy(semaphoreOutputName, PREFIX_NAME_SEM, NAME_MAX_LEN);
 		_tcsncat(semaphoreOutputName, outputFileNames[i], NAME_MAX_LEN - PREFIX_NAME_LEN);
 		rotateBackslashes(semaphoreOutputName);
 
+		// create or open the semaphore
 		hSemaphoresOutputAndTerminationSemaphore[i] = CreateSemaphore(NULL, 0, MAX_SEM_VALUE, semaphoreOutputName);
 		if (hSemaphoresOutputAndTerminationSemaphore[i] == NULL) {
 			_ftprintf(stderr, _T("Impossible to open semaphore for output file (collector). Error: %x\n"), GetLastError());
 			return 1;
 		}
+		// initialize the counter of rows already there for processing
 		rowsReady[i] = 0;
+		// open the output file
 		hOutputFiles[i] = CreateFile(outputFileNames[i], GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hOutputFiles[i] == INVALID_HANDLE_VALUE) {
 			_ftprintf(stderr, _T("Impossible to open output file %s. Error: %x"), outputFileNames[i], GetLastError());
 			return 2;
 		}
 	}
-	// the last handle of the array is the termination Semaphore (signalled by threads that reach end of records file
+	// the last handle of the array is the termination Semaphore (signalled by threads that reach end of records file)
+	// in this way, a call on the modified WaitForMultipleObjects can return with a ready semaphore for output or for termination
 	hSemaphoresOutputAndTerminationSemaphore[nOutputFiles] = CreateSemaphore(NULL, 0, cp->nProcessing, TERMINATION_SEMAPHORE_NAME);
 	if (hSemaphoresOutputAndTerminationSemaphore[nOutputFiles] == NULL) {
 		_ftprintf(stderr, _T("Impossible to open termination semaphore (collector). Error: %x\n"), GetLastError());
@@ -397,10 +460,11 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 	}
 	nTerminated = 0;
 
+	// main cycle to wait some interesting things: output record added or some threads terminated
 	while (nTerminated < cp->nProcessing) {
 		result = WaitForVeryHugeNumberOfObjects(hSemaphoresOutputAndTerminationSemaphore, nOutputFiles + 1, FALSE);
 		if (result == WAIT_FAILED) {
-			_ftprintf(stderr, _T("Impossible to wait very huge number of objects (collector)"));
+			_ftprintf(stderr, _T("Impossible to wait very huge number of objects (collector)\n"));
 			return 1;
 		}
 		assert(result <= nOutputFiles);
@@ -457,6 +521,7 @@ BOOL outputRecordRead(HANDLE hFile, LPOUTPUTRECORD outputRecord) {
 	}
 	return TRUE;
 }
+
 BOOL outputRecordWrite(HANDLE hFile, LPOUTPUTRECORD outputRecord) {
 	DWORD nWritten;
 	if (!WriteFile(hFile, outputRecord, sizeof(OUTPUTRECORD), &nWritten, NULL)) {
@@ -480,6 +545,7 @@ DWORD WaitForVeryHugeNumberOfObjects(LPHANDLE handles, DWORD count, BOOL waitFor
 	if (waitForAll) {
 		// wait for all the handles
 		while (toWait > 0) {
+			// wait all the members of a chunk
 			toWaitNow = (toWait > MAXIMUM_WAIT_OBJECTS) ? MAXIMUM_WAIT_OBJECTS : toWait;
 			if (WaitForMultipleObjects(toWaitNow, &handles[waited], TRUE, INFINITE) == WAIT_FAILED) {
 				return WAIT_FAILED;
@@ -511,8 +577,6 @@ DWORD WaitForVeryHugeNumberOfObjects(LPHANDLE handles, DWORD count, BOOL waitFor
 					result += chunkN * MAXIMUM_WAIT_OBJECTS;
 					return result;
 				}
-
-
 			}
 		} else {
 			// less than WAIT_OBJECT_0 handles
@@ -573,16 +637,20 @@ static DWORD FileType(LPWIN32_FIND_DATA pFileData) {
 		return FType;
 }
 
+// function that the processing thread pass as argument of the visit function
 VOID updateOutputRecord(LPTSTR path, LPOUTPUTRECORD outputRecord) {
 	FILE *currentFile;
 	TCHAR line[LINE_MAX_LEN];
 	DWORD lineLength;
+	// open for reading
 	currentFile = _tfopen(path, _T("r"));
 	if (currentFile == NULL) {
 		_ftprintf(stderr, _T("Impossible to open file %s\n"), path);
 		return;
 	}
+	// this is a new file
 	outputRecord->nFiles++;
+	// read a line
 	while (_fgetts(line, LINE_MAX_LEN, currentFile) > 0) {
 		lineLength = _tcsnlen(line, LINE_MAX_LEN);
 		outputRecord->nNewLines++;
