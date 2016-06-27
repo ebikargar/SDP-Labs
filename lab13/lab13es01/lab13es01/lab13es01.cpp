@@ -155,8 +155,6 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 	CloseHandle(hIn);
 
-	// TODO: signal to the collector that the work has finished
-
 	if (WaitForSingleObject(hThreads[N], INFINITE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Impossible to wait for the last thread. Error: %x\n"), GetLastError());
 		TerminateThread(hThreads[N], 1);
@@ -216,7 +214,7 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		if (nRead == 0) {
 			// end of file
 			Sleep(1000);
-			// TODO signal on termination semaphore
+			// signal on termination semaphore
 			if (!ReleaseSemaphore(terminationSemaphore, 1, NULL)) {
 				_ftprintf(stderr, _T("Impossible to release termination semaphore. Error: %x\n"), GetLastError());
 				break;
@@ -234,7 +232,7 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		// TODO: do some job (scan directory and count things)
 		/*
 		scan directory
-		for each file, process it (counting chars and newlines) and add to the outputRecord (may need realloc)
+		for each file, process it (counting chars and newlines) and add to the outputRecord
 		*/
 		outputRecord.nFiles = 3;
 		outputRecord.nChar = 127;
