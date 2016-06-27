@@ -3,6 +3,8 @@ Lab 13 exercise 01
 
 Description of exercise is provided into the file lab13/lab13.txt
 
+Use the provided BinaryGenerator to generate the input file.
+
 In order to obtain the expected results, delete the output files before each run of the program.
 If this is not done, this program will append the content to the existing one.
 
