@@ -97,6 +97,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	hThreads = (LPHANDLE)calloc(N + 1, sizeof(HANDLE));
 	if (hThreads == NULL) {
 		_ftprintf(stderr, _T("Impossible to allocate handles for threads\n"));
+		CloseHandle(hIn);
 		return 5;
 	}
 
@@ -115,6 +116,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 				CloseHandle(hThreads[i]);
 			}
 			free(hThreads);
+			CloseHandle(hIn);
 			return 6;
 		}
 	}
@@ -132,9 +134,10 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 			CloseHandle(hThreads[i]);
 		}
 		free(hThreads);
+		CloseHandle(hIn);
 		return 7;
 	}
-	
+
 	// wait all the threads
 	if (WaitForVeryHugeNumberOfObjects(hThreads, N, TRUE) == WAIT_FAILED) {
 		_ftprintf(stderr, _T("Impossible to wait for all the threads\n"));
@@ -143,13 +146,14 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 			CloseHandle(hThreads[i]);
 		}
 		free(hThreads);
+		CloseHandle(hIn);
 		return 8;
 	}
-	
-	
+
 	for (i = 0; i < N; i++) {
 		CloseHandle(hThreads[i]);
 	}
+	CloseHandle(hIn);
 
 	// TODO: signal to the collector that the work has finished
 
@@ -157,12 +161,12 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 		_ftprintf(stderr, _T("Impossible to wait for the last thread. Error: %x\n"), GetLastError());
 		TerminateThread(hThreads[N], 1);
 		CloseHandle(hThreads[N]);
+		free(hThreads);
 		return 9;
 	}
 
 	_tprintf(_T("Program going to terminate correctly\n"));
 	CloseHandle(hThreads[N]);
-
 	free(hThreads);
 
 	return 0;
@@ -200,14 +204,14 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		_ftprintf(stderr, _T("Impossible to open the termination semaphore. Error: %x\n"), GetLastError());
 		return 1;
 	}
-	
+
 	while (TRUE) {
 		EnterCriticalSection(&pp->cs);
 		result = ReadFile(pp->hRecordsFile, &record, sizeof(RECORD), &nRead, NULL);
 		LeaveCriticalSection(&pp->cs);
 		if (result == FALSE) {
 			_ftprintf(stderr, _T("Impossible to read a record from the input file. Error: %x\n"), GetLastError());
-			return 1;
+			break;
 		}
 		if (nRead == 0) {
 			// end of file
@@ -215,17 +219,17 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 			// TODO signal on termination semaphore
 			if (!ReleaseSemaphore(terminationSemaphore, 1, NULL)) {
 				_ftprintf(stderr, _T("Impossible to release termination semaphore. Error: %x\n"), GetLastError());
-				return 2;
+				break;
 			}
 			//protectedBoolSet(pp->pb, TRUE);
 			break;
 		}
 		if (nRead != sizeof(RECORD)) {
 			_ftprintf(stderr, _T("Record size mismatch\n"));
-			return 3;
+			break;
 		}
 		_tprintf(_T("Record read: %s %s %s\n"), record.directoryName, record.inputFileName, record.outputName);
-		
+
 		//Sleep(1000);
 		// TODO: do some job (scan directory and count things)
 		/*
@@ -248,19 +252,19 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		hMutexOutput = CreateMutex(NULL, FALSE, mutexOutputName);
 		if (hMutexOutput == NULL) {
 			_ftprintf(stderr, _T("Impossible to create/open mutex. Error: %x\n"), GetLastError());
-			return 4;
+			break;
 		}
 		// Named Semaphore: CreateSemaphore returns the existing semaphore if it has already been created
 		hSemaphoreOutput = CreateSemaphore(NULL, 0, MAX_SEM_VALUE, semaphoreOutputName);
 		if (hSemaphoreOutput == NULL) {
 			_ftprintf(stderr, _T("Impossible to create/open semaphore. Error: %x\n"), GetLastError());
-			return 5;
+			break;
 		}
 
 		// acquire the mutex for the output file
 		if (WaitForSingleObject(hMutexOutput, INFINITE) == WAIT_FAILED) {
 			_ftprintf(stderr, _T("Impossible to wait for the semaphore named %s. Error: %x"), mutexOutputName, GetLastError());
-			return 6;
+			break;
 		}
 		// write the data
 
@@ -269,30 +273,42 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 		if (hFileOutput == INVALID_HANDLE_VALUE) {
 			_ftprintf(stderr, _T("Impossible to open/create file %s. Error: %x\n"), record.outputName, GetLastError());
 			ReleaseMutex(hMutexOutput);
-			return 7;
+			break;
 		}
 		// go to the end
 		if (SetFilePointer(hFileOutput, 0, 0, FILE_END) == INVALID_SET_FILE_POINTER) {
 			_ftprintf(stderr, _T("Impossible to set the file pointer to the end of the file %s. Error: %x\n"), record.outputName, GetLastError());
 			ReleaseMutex(hMutexOutput);
-			return 8;
+			CloseHandle(hFileOutput);
+			break;
 		}
 		// write
 		//WriteFile(hFileOutput, _T("ciao"), 5 * sizeof(TCHAR), &nWritten, NULL);
 		if (!outputRecordWrite(hFileOutput, &outputRecord)) {
 			_ftprintf(stderr, _T("Impossible to write output record. Error: %x\n"), GetLastError());
-			return 9;
+			ReleaseMutex(hMutexOutput);
+			CloseHandle(hFileOutput);
+			break;
 		}
-		CloseHandle(hFileOutput);
 		// release the mutex for the file
 		ReleaseMutex(hMutexOutput);
+		CloseHandle(hFileOutput);
 
 		// Signal that a record has been written on the output file
 		if (!ReleaseSemaphore(hSemaphoreOutput, 1, NULL)) {
 			_ftprintf(stderr, _T("Impossible to release the semaphore for output file %s. Error: %x\n"), record.outputName, GetLastError());
-			return 10;
+			break;
 		}
+		// WARNING: don't close those handles, because no warranty that the collectorThreador other processingThreads 
+		// already opened them. They are named objects, if i close them prematurely then the other threads will wait
+		// forever because they will create effectively them again, instead of using existing.
+		// Those handles will be automatically closed at the end of the process.
+		//CloseHandle(hMutexOutput);
+		//CloseHandle(hSemaphoreOutput);
 	}
+	// WARNING: also this handle must not be closed there, because processingThread may have not yet opened it, and
+	// in this way it could loose the signal on the semaphore
+	//CloseHandle(terminationSemaphore);
 
 	return 0;
 }
@@ -300,7 +316,6 @@ DWORD WINAPI processingThreadFunction(LPVOID p) {
 DWORD WINAPI collectorThreadFunction(LPVOID p) {
 	LPCOLLECTORPARAM cp = (LPCOLLECTORPARAM)p;
 	HANDLE hRecordsFile;
-	//HANDLE hCurrentOutputFile;
 	RECORD record;
 	DWORD nRead, nOutputFiles, i;
 	LONG found;
@@ -350,7 +365,7 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 	CloseHandle(hRecordsFile);
 
 	// Now open all the semaphores for the output files
-	
+
 	for (i = 0; i < nOutputFiles; i++) {
 		_tcsncpy(semaphoreOutputName, PREFIX_NAME_SEM, NAME_MAX_LEN);
 		_tcsncat(semaphoreOutputName, outputFileNames[i], NAME_MAX_LEN - PREFIX_NAME_LEN);
@@ -412,7 +427,10 @@ DWORD WINAPI collectorThreadFunction(LPVOID p) {
 			_tprintf(_T("\tn_files: %u\tn_char: %u\tn_newlines: %u\n"), outRecord.nFiles, outRecord.nChar, outRecord.nNewLines);
 		}
 		_tprintf(_T("OK\n"));
+		CloseHandle(hOutputFiles[i]);
+		CloseHandle(hSemaphoresOutputAndTerminationSemaphore[i]);
 	}
+	CloseHandle(hSemaphoresOutputAndTerminationSemaphore[nOutputFiles]);
 	return 0;
 }
 
@@ -486,12 +504,12 @@ DWORD WaitForVeryHugeNumberOfObjects(LPHANDLE handles, DWORD count, BOOL waitFor
 					return result;
 				}
 
-				
+
 			}
 		} else {
 			// less than WAIT_OBJECT_0 handles
 			return WaitForMultipleObjects(count, handles, FALSE, INFINITE) - WAIT_OBJECT_0;
 		}
 	}
-	
+
 }
